@@ -1,0 +1,6 @@
+{
+  "name": "WhiteBoard",
+  "description": "Full-featured digital whiteboard app with drawing tools, shapes, math formulas, science diagrams, stickers, tables, layers, board textures, and PDF/image export.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
