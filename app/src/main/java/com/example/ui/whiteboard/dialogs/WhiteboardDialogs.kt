@@ -29,8 +29,12 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
+import androidx.compose.foundation.Canvas
+import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
+import androidx.compose.ui.graphics.nativeCanvas
 import com.example.data.model.*
 import com.example.ui.ads.BannerAdView
+import com.example.ui.whiteboard.CanvasRenderer
 
 val DEFAULT_COLORS = listOf(
     Color(0xFF000000), // Black
@@ -299,14 +303,16 @@ fun ShapesDialog(
     )
 
     val shapes3D = listOf(
-        ShapeType.CUBE, ShapeType.CYLINDER, ShapeType.CONE, ShapeType.SPHERE, ShapeType.PYRAMID
+        ShapeType.CUBE, ShapeType.CUBOID, ShapeType.CYLINDER, ShapeType.CONE,
+        ShapeType.SPHERE, ShapeType.HEMISPHERE, ShapeType.PYRAMID, ShapeType.TRIANGULAR_PRISM,
+        ShapeType.TORUS, ShapeType.HEXAGONAL_PRISM, ShapeType.CAPSULE
     )
 
     Dialog(onDismissRequest = onDismiss) {
         Card(
             shape = RoundedCornerShape(20.dp),
             colors = CardDefaults.cardColors(containerColor = Color.White),
-            modifier = Modifier.fillMaxWidth().heightIn(max = 560.dp).padding(horizontal = 8.dp)
+            modifier = Modifier.fillMaxWidth().heightIn(max = 580.dp).padding(horizontal = 8.dp)
         ) {
             Column(
                 modifier = Modifier
@@ -382,24 +388,33 @@ fun ShapesDialog(
 
                 HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp), color = Color(0xFFEEEEEE))
 
-                Text("3D Shapes", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = Color.Gray)
+                Text("3D Shapes (Detailed)", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF9C27B0))
                 Spacer(Modifier.height(8.dp))
 
-                // 3D Grid
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    shapes3D.forEach { shape ->
-                        ShapeItemButton(
-                            shape = shape,
-                            isSelected = selectedShape == shape,
-                            onClick = {
-                                onShapeSelect(shape)
-                                onDismiss()
-                            },
-                            modifier = Modifier.weight(1f)
-                        )
+                // 3D Grid in rows of 4
+                Column {
+                    shapes3D.chunked(4).forEach { rowShapes ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            rowShapes.forEach { shape ->
+                                ShapeItemButton(
+                                    shape = shape,
+                                    isSelected = selectedShape == shape,
+                                    onClick = {
+                                        onShapeSelect(shape)
+                                        onDismiss()
+                                    },
+                                    modifier = Modifier.weight(1f)
+                                )
+                            }
+                            if (rowShapes.size < 4) {
+                                repeat(4 - rowShapes.size) {
+                                    Spacer(modifier = Modifier.weight(1f))
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -438,8 +453,16 @@ fun ShapeItemButton(
             ShapeType.PENTAGON, ShapeType.HEXAGON, ShapeType.DIAMOND -> Icons.Default.Hexagon
             ShapeType.HEART -> Icons.Default.FavoriteBorder
             ShapeType.CROSS -> Icons.Default.Add
-            ShapeType.CUBE -> Icons.Default.ViewInAr
+            ShapeType.CUBE, ShapeType.CUBOID -> Icons.Default.ViewInAr
             ShapeType.CYLINDER -> Icons.Default.Category
+            ShapeType.CONE -> Icons.Default.ChangeHistory
+            ShapeType.SPHERE -> Icons.Default.Circle
+            ShapeType.HEMISPHERE -> Icons.Default.Brightness3
+            ShapeType.PYRAMID -> Icons.Default.Terrain
+            ShapeType.TRIANGULAR_PRISM -> Icons.Default.ChangeHistory
+            ShapeType.TORUS -> Icons.Default.DonutLarge
+            ShapeType.HEXAGONAL_PRISM -> Icons.Default.Hexagon
+            ShapeType.CAPSULE -> Icons.Default.Lens
             else -> Icons.Default.Interests
         }
 
@@ -696,22 +719,27 @@ fun BoardColorDialog(
 @Composable
 fun TextDialog(
     initialText: String = "",
-    onAddText: (String, Color, Float) -> Unit,
+    onAddText: (String, Color, Float, Boolean, String) -> Unit,
     onDismiss: () -> Unit
 ) {
     var text by remember { mutableStateOf(initialText) }
     var selectedColor by remember { mutableStateOf(Color.Black) }
     var selectedSize by remember { mutableStateOf(48f) }
+    var isHandwritingAnimated by remember { mutableStateOf(true) }
+    var selectedHandStyle by remember { mutableStateOf("pen") }
     val sizePresets = listOf(36f, 48f, 72f, 100f)
 
     Dialog(onDismissRequest = onDismiss) {
         Card(
             shape = RoundedCornerShape(20.dp),
             colors = CardDefaults.cardColors(containerColor = Color.White),
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp)
+            modifier = Modifier.fillMaxWidth().heightIn(max = 620.dp).padding(horizontal = 8.dp)
         ) {
             Column(
-                modifier = Modifier.padding(20.dp)
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(20.dp)
+                    .verticalScroll(rememberScrollState())
             ) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -726,7 +754,7 @@ fun TextDialog(
                         Button(
                             onClick = {
                                 if (text.isNotBlank()) {
-                                    onAddText(text, selectedColor, selectedSize)
+                                    onAddText(text, selectedColor, selectedSize, isHandwritingAnimated, selectedHandStyle)
                                 }
                                 onDismiss()
                             },
@@ -743,9 +771,144 @@ fun TextDialog(
                     value = text,
                     onValueChange = { text = it },
                     placeholder = { Text("Type here...") },
-                    modifier = Modifier.fillMaxWidth().heightIn(min = 100.dp),
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 90.dp),
                     shape = RoundedCornerShape(12.dp)
                 )
+
+                Spacer(Modifier.height(14.dp))
+
+                // Handwriting Animation Card
+                Card(
+                    shape = RoundedCornerShape(14.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = if (isHandwritingAnimated) Color(0xFFF3E5F5) else Color(0xFFF8F9FA)
+                    ),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .border(
+                            width = 1.dp,
+                            color = if (isHandwritingAnimated) Color(0xFFBA68C8) else Color(0xFFEEEEEE),
+                            shape = RoundedCornerShape(14.dp)
+                        )
+                ) {
+                    Column(modifier = Modifier.padding(12.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text("✍️", fontSize = 22.sp)
+                                Spacer(Modifier.width(8.dp))
+                                Column {
+                                    Text(
+                                        "Hand Animation",
+                                        fontSize = 14.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (isHandwritingAnimated) Color(0xFF6A1B9A) else Color.Black
+                                    )
+                                    Text(
+                                        "Draws text with animated hand & pen",
+                                        fontSize = 11.sp,
+                                        color = Color.Gray
+                                    )
+                                }
+                            }
+                            Switch(
+                                checked = isHandwritingAnimated,
+                                onCheckedChange = { isHandwritingAnimated = it },
+                                colors = SwitchDefaults.colors(
+                                    checkedThumbColor = Color.White,
+                                    checkedTrackColor = Color(0xFF9C27B0)
+                                )
+                            )
+                        }
+
+                        if (isHandwritingAnimated) {
+                            Spacer(Modifier.height(10.dp))
+                            Text(
+                                "Select Hand & Pen Tool:",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = Color(0xFF4A148C)
+                            )
+                            Spacer(Modifier.height(6.dp))
+                            val styles = listOf(
+                                "pen" to "✍️ Pen",
+                                "fountain" to "🖋️ Fountain",
+                                "marker" to "🖍️ Marker",
+                                "pencil" to "✏️ Pencil"
+                            )
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                styles.forEach { (styleKey, label) ->
+                                    val isSel = selectedHandStyle == styleKey
+                                    Box(
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .clip(RoundedCornerShape(8.dp))
+                                            .background(if (isSel) Color(0xFF9C27B0) else Color.White)
+                                            .border(
+                                                width = 1.dp,
+                                                color = if (isSel) Color(0xFF9C27B0) else Color(0xFFD1C4E9),
+                                                shape = RoundedCornerShape(8.dp)
+                                            )
+                                            .clickable { selectedHandStyle = styleKey }
+                                            .padding(vertical = 8.dp),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text(
+                                            text = label,
+                                            fontSize = 11.sp,
+                                            fontWeight = if (isSel) FontWeight.Bold else FontWeight.Normal,
+                                            color = if (isSel) Color.White else Color.Black,
+                                            textAlign = TextAlign.Center
+                                        )
+                                    }
+                                }
+                            }
+
+                            // Live Hand & Pen Preview
+                            Spacer(Modifier.height(10.dp))
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(76.dp)
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .background(Color.White)
+                                    .border(1.dp, Color(0xFFE0E0E0), RoundedCornerShape(10.dp)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Canvas(modifier = Modifier.fillMaxSize()) {
+                                    val sample = if (text.isNotBlank()) text.take(14) else "Whiteboard"
+                                    val p = android.graphics.Paint().apply {
+                                        color = selectedColor.toArgb()
+                                        textSize = 28f
+                                        isAntiAlias = true
+                                        typeface = android.graphics.Typeface.DEFAULT_BOLD
+                                    }
+                                    val startX = 20f
+                                    val baseline = size.height * 0.65f
+                                    drawIntoCanvas { c ->
+                                        c.nativeCanvas.drawText(sample, startX, baseline, p)
+                                    }
+                                    val textW = p.measureText(sample)
+                                    CanvasRenderer.drawHandHoldingPen(
+                                        drawScope = this,
+                                        tipX = startX + textW + 2f,
+                                        tipY = baseline - 8f,
+                                        baselineY = baseline,
+                                        scale = 0.52f,
+                                        handStyle = selectedHandStyle,
+                                        isPenLifted = false
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
 
                 Spacer(Modifier.height(14.dp))
                 Text("Color", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = Color.Gray)
@@ -788,8 +951,8 @@ fun TextDialog(
                                 .padding(horizontal = 4.dp)
                                 .clip(RoundedCornerShape(8.dp))
                                 .background(if (isSelected) Color(0xFF2196F3) else Color(0xFFF0F0F0))
-                                .clickable { selectedSize = size }
-                                .padding(vertical = 10.dp),
+                            .clickable { selectedSize = size }
+                            .padding(vertical = 10.dp),
                             contentAlignment = Alignment.Center
                         ) {
                             Text(
@@ -2046,32 +2209,59 @@ fun ElementEditDialog(
     selectedElement: CanvasElement?,
     onColorSelected: (Color) -> Unit,
     onFillToggle: () -> Unit,
+    onShapePartColorSelected: ((String, Color) -> Unit)? = null,
+    onUpdateTextAnimation: ((Boolean, String) -> Unit)? = null,
+    onPlayTextAnimation: (() -> Unit)? = null,
     onDismiss: () -> Unit
 ) {
     if (selectedElement == null) return
 
     val isShape = selectedElement is CanvasElement.Shape
+    val isText = selectedElement is CanvasElement.Text
     val isFilled = if (selectedElement is CanvasElement.Shape) selectedElement.isFilled else false
+
+    // For shape part coloring
+    val shapeParts = remember(selectedElement) {
+        if (selectedElement is CanvasElement.Shape) {
+            getShapeDistinctParts(selectedElement.shapeType)
+        } else emptyList()
+    }
+    var selectedPartKey by remember(selectedElement.id) {
+        mutableStateOf(shapeParts.firstOrNull()?.key ?: "stroke")
+    }
+
+    // For text animation
+    var isTextAnimated by remember(selectedElement.id) {
+        mutableStateOf(if (selectedElement is CanvasElement.Text) selectedElement.isHandwritingAnimated else false)
+    }
+    var textHandStyle by remember(selectedElement.id) {
+        mutableStateOf(if (selectedElement is CanvasElement.Text) selectedElement.handStyle else "pen")
+    }
 
     Dialog(onDismissRequest = onDismiss) {
         Card(
             shape = RoundedCornerShape(20.dp),
             colors = CardDefaults.cardColors(containerColor = Color.White),
-            modifier = Modifier.fillMaxWidth().padding(12.dp)
+            modifier = Modifier.fillMaxWidth().heightIn(max = 640.dp).padding(12.dp)
         ) {
-            Column(modifier = Modifier.padding(20.dp)) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(20.dp)
+                    .verticalScroll(rememberScrollState())
+            ) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text("Edit Style & Color", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color.Black)
+                    Text("Edit Style & Colors", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color.Black)
                     IconButton(onClick = onDismiss, modifier = Modifier.size(28.dp)) {
                         Icon(Icons.Default.Close, contentDescription = "Close", tint = Color.Gray)
                     }
                 }
 
-                if (isShape) {
+                if (isShape && selectedElement is CanvasElement.Shape) {
                     Spacer(Modifier.height(12.dp))
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -2092,29 +2282,271 @@ fun ElementEditDialog(
                             )
                         )
                     }
+
                     HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp), color = Color(0xFFEEEEEE))
-                }
 
-                Text("Select Primary Color", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = Color.Gray)
-                Spacer(Modifier.height(10.dp))
+                    // Shape distinct parts section
+                    Text(
+                        text = "Color Distinct Parts (${selectedElement.shapeType.label})",
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFF1565C0)
+                    )
+                    Text(
+                        text = "Select a face, cap, or part below, then pick its color:",
+                        fontSize = 11.sp,
+                        color = Color.Gray
+                    )
+                    Spacer(Modifier.height(8.dp))
 
-                LazyVerticalGrid(
-                    columns = GridCells.Fixed(5),
-                    modifier = Modifier.height(180.dp)
-                ) {
-                    items(EXTENDED_PALETTE) { color ->
-                        Box(
-                            modifier = Modifier
-                                .padding(4.dp)
-                                .size(36.dp)
-                                .clip(CircleShape)
-                                .background(color)
-                                .border(1.dp, Color(0xFFCCCCCC), CircleShape)
-                                .clickable {
-                                    onColorSelected(color)
-                                    onDismiss()
+                    // Part selection chips
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        shapeParts.chunked(2).forEach { rowParts ->
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                rowParts.forEach { part ->
+                                    val isSelected = selectedPartKey == part.key
+                                    val currColorArgb = selectedElement.partColors[part.key] ?: part.defaultColor
+                                    val partColor = Color(currColorArgb)
+
+                                    Row(
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .clip(RoundedCornerShape(10.dp))
+                                            .background(if (isSelected) Color(0xFFE3F2FD) else Color(0xFFF8F9FA))
+                                            .border(
+                                                width = if (isSelected) 2.dp else 1.dp,
+                                                color = if (isSelected) Color(0xFF2196F3) else Color(0xFFE0E0E0),
+                                                shape = RoundedCornerShape(10.dp)
+                                            )
+                                            .clickable { selectedPartKey = part.key }
+                                            .padding(horizontal = 8.dp, vertical = 8.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(18.dp)
+                                                .clip(CircleShape)
+                                                .background(partColor)
+                                                .border(1.dp, Color.Gray, CircleShape)
+                                        )
+                                        Spacer(Modifier.width(6.dp))
+                                        Text(
+                                            text = part.name,
+                                            fontSize = 11.sp,
+                                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                            color = if (isSelected) Color(0xFF1565C0) else Color.DarkGray,
+                                            maxLines = 1
+                                        )
+                                    }
                                 }
-                        )
+                                if (rowParts.size < 2) {
+                                    Spacer(modifier = Modifier.weight(1f))
+                                }
+                            }
+                        }
+                    }
+
+                    Spacer(Modifier.height(12.dp))
+                    val currentPartName = shapeParts.find { it.key == selectedPartKey }?.name ?: "Selected Part"
+                    Text(
+                        text = "Apply Color to: $currentPartName",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = Color(0xFF1976D2)
+                    )
+                    Spacer(Modifier.height(8.dp))
+
+                    LazyVerticalGrid(
+                        columns = GridCells.Fixed(6),
+                        modifier = Modifier.height(150.dp)
+                    ) {
+                        items(EXTENDED_PALETTE) { color ->
+                            Box(
+                                modifier = Modifier
+                                    .padding(3.dp)
+                                    .size(32.dp)
+                                    .clip(CircleShape)
+                                    .background(color)
+                                    .border(1.dp, Color(0xFFCCCCCC), CircleShape)
+                                    .clickable {
+                                        onShapePartColorSelected?.invoke(selectedPartKey, color)
+                                    }
+                            )
+                        }
+                    }
+
+                    Spacer(Modifier.height(10.dp))
+                    OutlinedButton(
+                        onClick = {
+                            val activeColor = Color(selectedElement.partColors[selectedPartKey] ?: Color.Black.toArgb())
+                            onColorSelected(activeColor)
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(10.dp)
+                    ) {
+                        Text("Apply to Entire Shape", fontSize = 12.sp)
+                    }
+                } else if (isText && selectedElement is CanvasElement.Text) {
+                    Spacer(Modifier.height(12.dp))
+
+                    // Text Animation Controls
+                    Card(
+                        shape = RoundedCornerShape(14.dp),
+                        colors = CardDefaults.cardColors(
+                            containerColor = if (isTextAnimated) Color(0xFFF3E5F5) else Color(0xFFF8F9FA)
+                        ),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .border(
+                                width = 1.dp,
+                                color = if (isTextAnimated) Color(0xFFBA68C8) else Color(0xFFEEEEEE),
+                                shape = RoundedCornerShape(14.dp)
+                            )
+                    ) {
+                        Column(modifier = Modifier.padding(12.dp)) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text("✍️", fontSize = 20.sp)
+                                    Spacer(Modifier.width(8.dp))
+                                    Column {
+                                        Text(
+                                            "Hand Drawing Animation",
+                                            fontSize = 13.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = if (isTextAnimated) Color(0xFF6A1B9A) else Color.Black
+                                        )
+                                        Text(
+                                            "Animate letter-by-letter writing",
+                                            fontSize = 10.sp,
+                                            color = Color.Gray
+                                        )
+                                    }
+                                }
+                                Switch(
+                                    checked = isTextAnimated,
+                                    onCheckedChange = {
+                                        isTextAnimated = it
+                                        onUpdateTextAnimation?.invoke(it, textHandStyle)
+                                    },
+                                    colors = SwitchDefaults.colors(
+                                        checkedThumbColor = Color.White,
+                                        checkedTrackColor = Color(0xFF9C27B0)
+                                    )
+                                )
+                            }
+
+                            if (isTextAnimated) {
+                                Spacer(Modifier.height(10.dp))
+                                Text("Pen Tool Style:", fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF4A148C))
+                                Spacer(Modifier.height(6.dp))
+                                val styles = listOf(
+                                    "pen" to "✍️ Pen",
+                                    "fountain" to "🖋️ Fountain",
+                                    "marker" to "🖍️ Marker",
+                                    "pencil" to "✏️ Pencil"
+                                )
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    styles.forEach { (styleKey, label) ->
+                                        val isSel = textHandStyle == styleKey
+                                        Box(
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .clip(RoundedCornerShape(8.dp))
+                                                .background(if (isSel) Color(0xFF9C27B0) else Color.White)
+                                                .border(
+                                                    width = 1.dp,
+                                                    color = if (isSel) Color(0xFF9C27B0) else Color(0xFFD1C4E9),
+                                                    shape = RoundedCornerShape(8.dp)
+                                                )
+                                                .clickable {
+                                                    textHandStyle = styleKey
+                                                    onUpdateTextAnimation?.invoke(true, styleKey)
+                                                }
+                                                .padding(vertical = 6.dp),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Text(
+                                                text = label,
+                                                fontSize = 10.sp,
+                                                fontWeight = if (isSel) FontWeight.Bold else FontWeight.Normal,
+                                                color = if (isSel) Color.White else Color.Black,
+                                                textAlign = TextAlign.Center
+                                            )
+                                        }
+                                    }
+                                }
+
+                                Spacer(Modifier.height(10.dp))
+                                Button(
+                                    onClick = { onPlayTextAnimation?.invoke() },
+                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF9C27B0)),
+                                    modifier = Modifier.fillMaxWidth(),
+                                    shape = RoundedCornerShape(8.dp)
+                                ) {
+                                    Icon(Icons.Default.PlayArrow, contentDescription = null, modifier = Modifier.size(16.dp))
+                                    Spacer(Modifier.width(6.dp))
+                                    Text("Replay Handwriting Animation", fontSize = 12.sp)
+                                }
+                            }
+                        }
+                    }
+
+                    Spacer(Modifier.height(14.dp))
+                    Text("Text Color", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = Color.Gray)
+                    Spacer(Modifier.height(8.dp))
+
+                    LazyVerticalGrid(
+                        columns = GridCells.Fixed(6),
+                        modifier = Modifier.height(150.dp)
+                    ) {
+                        items(EXTENDED_PALETTE) { color ->
+                            Box(
+                                modifier = Modifier
+                                    .padding(3.dp)
+                                    .size(32.dp)
+                                    .clip(CircleShape)
+                                    .background(color)
+                                    .border(1.dp, Color(0xFFCCCCCC), CircleShape)
+                                    .clickable {
+                                        onColorSelected(color)
+                                    }
+                            )
+                        }
+                    }
+                } else {
+                    // For other elements (e.g. Strokes, Formulas, etc.)
+                    Spacer(Modifier.height(12.dp))
+                    Text("Select Color", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = Color.Gray)
+                    Spacer(Modifier.height(10.dp))
+
+                    LazyVerticalGrid(
+                        columns = GridCells.Fixed(6),
+                        modifier = Modifier.height(180.dp)
+                    ) {
+                        items(EXTENDED_PALETTE) { color ->
+                            Box(
+                                modifier = Modifier
+                                    .padding(3.dp)
+                                    .size(32.dp)
+                                    .clip(CircleShape)
+                                    .background(color)
+                                    .border(1.dp, Color(0xFFCCCCCC), CircleShape)
+                                    .clickable {
+                                        onColorSelected(color)
+                                        onDismiss()
+                                    }
+                            )
+                        }
                     }
                 }
 
@@ -2122,7 +2554,8 @@ fun ElementEditDialog(
                 Button(
                     onClick = onDismiss,
                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2196F3)),
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp)
                 ) {
                     Text("Done")
                 }

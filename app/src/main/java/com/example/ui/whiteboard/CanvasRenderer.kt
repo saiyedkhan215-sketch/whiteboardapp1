@@ -712,11 +712,18 @@ object CanvasRenderer {
                 }
                 drawScope.drawPath(path, color, style = style)
             }
-            // 3D Shapes
+            // Detailed 3D Shapes with Distinct Part Coloring
             ShapeType.CUBE -> {
                 val d = width * 0.3f
+                val strokeColor = getPartColor(shape, "stroke", color)
+                val frontColor = getPartColor(shape, "front", if (shape.isFilled) color.copy(alpha = 0.9f) else Color(0x3342A5F5))
+                val topColor = getPartColor(shape, "top", if (shape.isFilled) color.copy(alpha = 0.7f) else Color(0x3390CAF9))
+                val sideColor = getPartColor(shape, "side", if (shape.isFilled) color.copy(alpha = 0.5f) else Color(0x331E88E5))
+
                 // Front face
-                drawScope.drawRect(color, topLeft = Offset(minX, minY + d), size = Size(width - d, height - d), style = style)
+                drawScope.drawRect(frontColor, topLeft = Offset(minX, minY + d), size = Size(width - d, height - d), style = Fill)
+                drawScope.drawRect(strokeColor, topLeft = Offset(minX, minY + d), size = Size(width - d, height - d), style = Stroke(width = shape.strokeWidth))
+
                 // Top face
                 val topPath = Path().apply {
                     moveTo(minX, minY + d)
@@ -725,7 +732,9 @@ object CanvasRenderer {
                     lineTo(maxX - d, minY + d)
                     close()
                 }
-                drawScope.drawPath(topPath, color, style = style)
+                drawScope.drawPath(topPath, topColor, style = Fill)
+                drawScope.drawPath(topPath, strokeColor, style = Stroke(width = shape.strokeWidth))
+
                 // Right face
                 val rightPath = Path().apply {
                     moveTo(maxX - d, minY + d)
@@ -734,56 +743,323 @@ object CanvasRenderer {
                     lineTo(maxX - d, maxY)
                     close()
                 }
-                drawScope.drawPath(rightPath, color, style = style)
+                drawScope.drawPath(rightPath, sideColor, style = Fill)
+                drawScope.drawPath(rightPath, strokeColor, style = Stroke(width = shape.strokeWidth))
+            }
+            ShapeType.CUBOID -> {
+                val dx = width * 0.28f
+                val dy = height * 0.22f
+                val strokeColor = getPartColor(shape, "stroke", color)
+                val frontColor = getPartColor(shape, "front", if (shape.isFilled) color.copy(alpha = 0.9f) else Color(0x3342A5F5))
+                val topColor = getPartColor(shape, "top", if (shape.isFilled) color.copy(alpha = 0.7f) else Color(0x3390CAF9))
+                val sideColor = getPartColor(shape, "side", if (shape.isFilled) color.copy(alpha = 0.5f) else Color(0x331E88E5))
+
+                // Front face
+                drawScope.drawRect(frontColor, topLeft = Offset(minX, minY + dy), size = Size(width - dx, height - dy), style = Fill)
+                drawScope.drawRect(strokeColor, topLeft = Offset(minX, minY + dy), size = Size(width - dx, height - dy), style = Stroke(width = shape.strokeWidth))
+
+                // Top face
+                val topPath = Path().apply {
+                    moveTo(minX, minY + dy)
+                    lineTo(minX + dx, minY)
+                    lineTo(maxX, minY)
+                    lineTo(maxX - dx, minY + dy)
+                    close()
+                }
+                drawScope.drawPath(topPath, topColor, style = Fill)
+                drawScope.drawPath(topPath, strokeColor, style = Stroke(width = shape.strokeWidth))
+
+                // Right face
+                val rightPath = Path().apply {
+                    moveTo(maxX - dx, minY + dy)
+                    lineTo(maxX, minY)
+                    lineTo(maxX, maxY - dy)
+                    lineTo(maxX - dx, maxY)
+                    close()
+                }
+                drawScope.drawPath(rightPath, sideColor, style = Fill)
+                drawScope.drawPath(rightPath, strokeColor, style = Stroke(width = shape.strokeWidth))
             }
             ShapeType.CYLINDER -> {
-                val rH = height * 0.2f
+                val rH = height * 0.22f
+                val strokeColor = getPartColor(shape, "stroke", color)
+                val topColor = getPartColor(shape, "top", if (shape.isFilled) color.copy(alpha = 0.85f) else Color(0x3381C784))
+                val bodyColor = getPartColor(shape, "body", if (shape.isFilled) color.copy(alpha = 0.7f) else Color(0x334CAF50))
+                val baseColor = getPartColor(shape, "base", if (shape.isFilled) color.copy(alpha = 0.55f) else Color(0x332E7D32))
+
+                // Body surface quad
+                val bodyPath = Path().apply {
+                    moveTo(minX, minY + rH / 2f)
+                    lineTo(maxX, minY + rH / 2f)
+                    lineTo(maxX, maxY - rH / 2f)
+                    lineTo(minX, maxY - rH / 2f)
+                    close()
+                }
+                drawScope.drawPath(bodyPath, bodyColor, style = Fill)
+
+                // Bottom oval
+                drawScope.drawOval(baseColor, topLeft = Offset(minX, maxY - rH), size = Size(width, rH), style = Fill)
+                drawScope.drawOval(strokeColor, topLeft = Offset(minX, maxY - rH), size = Size(width, rH), style = Stroke(width = shape.strokeWidth))
+
                 // Top oval
-                drawScope.drawOval(color, topLeft = Offset(minX, minY), size = Size(width, rH), style = style)
-                // Bottom oval arc
-                drawScope.drawOval(color, topLeft = Offset(minX, maxY - rH), size = Size(width, rH), style = style)
+                drawScope.drawOval(topColor, topLeft = Offset(minX, minY), size = Size(width, rH), style = Fill)
+                drawScope.drawOval(strokeColor, topLeft = Offset(minX, minY), size = Size(width, rH), style = Stroke(width = shape.strokeWidth))
+
                 // Side lines
-                drawScope.drawLine(color, Offset(minX, minY + rH / 2f), Offset(minX, maxY - rH / 2f), strokeWidth = shape.strokeWidth)
-                drawScope.drawLine(color, Offset(maxX, minY + rH / 2f), Offset(maxX, maxY - rH / 2f), strokeWidth = shape.strokeWidth)
+                drawScope.drawLine(strokeColor, Offset(minX, minY + rH / 2f), Offset(minX, maxY - rH / 2f), strokeWidth = shape.strokeWidth)
+                drawScope.drawLine(strokeColor, Offset(maxX, minY + rH / 2f), Offset(maxX, maxY - rH / 2f), strokeWidth = shape.strokeWidth)
             }
             ShapeType.CONE -> {
-                val rH = height * 0.2f
+                val rH = height * 0.22f
                 val tip = Offset(minX + width / 2f, minY)
-                // Bottom oval
-                drawScope.drawOval(color, topLeft = Offset(minX, maxY - rH), size = Size(width, rH), style = style)
-                drawScope.drawLine(color, tip, Offset(minX, maxY - rH / 2f), strokeWidth = shape.strokeWidth)
-                drawScope.drawLine(color, tip, Offset(maxX, maxY - rH / 2f), strokeWidth = shape.strokeWidth)
+                val strokeColor = getPartColor(shape, "stroke", color)
+                val bodyColor = getPartColor(shape, "body", if (shape.isFilled) color.copy(alpha = 0.75f) else Color(0x33FFB74D))
+                val baseColor = getPartColor(shape, "base", if (shape.isFilled) color.copy(alpha = 0.55f) else Color(0x33F57C00))
+
+                // Conical body mantle
+                val mantlePath = Path().apply {
+                    moveTo(tip.x, tip.y)
+                    lineTo(minX, maxY - rH / 2f)
+                    lineTo(maxX, maxY - rH / 2f)
+                    close()
+                }
+                drawScope.drawPath(mantlePath, bodyColor, style = Fill)
+
+                // Bottom base oval
+                drawScope.drawOval(baseColor, topLeft = Offset(minX, maxY - rH), size = Size(width, rH), style = Fill)
+                drawScope.drawOval(strokeColor, topLeft = Offset(minX, maxY - rH), size = Size(width, rH), style = Stroke(width = shape.strokeWidth))
+
+                // Side lines to tip
+                drawScope.drawLine(strokeColor, tip, Offset(minX, maxY - rH / 2f), strokeWidth = shape.strokeWidth)
+                drawScope.drawLine(strokeColor, tip, Offset(maxX, maxY - rH / 2f), strokeWidth = shape.strokeWidth)
             }
             ShapeType.SPHERE -> {
                 val radius = min(width, height) / 2f
                 val center = Offset(minX + width / 2f, minY + height / 2f)
-                drawScope.drawCircle(color, radius = radius, center = center, style = style)
-                // Equator & meridian dashed rings
+                val strokeColor = getPartColor(shape, "stroke", color)
+                val topColor = getPartColor(shape, "top", if (shape.isFilled) color.copy(alpha = 0.85f) else Color(0x33BA68C8))
+                val bottomColor = getPartColor(shape, "bottom", if (shape.isFilled) color.copy(alpha = 0.6f) else Color(0x337B1FA2))
+                val ringColor = getPartColor(shape, "ring", Color(0xFFE1BEE7))
+
+                // Base sphere circle
+                drawScope.drawCircle(bottomColor, radius = radius, center = center, style = Fill)
+                // Upper hemisphere dome
+                val topDome = Path().apply {
+                    arcTo(androidx.compose.ui.geometry.Rect(center.x - radius, center.y - radius, center.x + radius, center.y + radius), 180f, 180f, false)
+                    close()
+                }
+                drawScope.drawPath(topDome, topColor, style = Fill)
+
+                // Equator & meridian 3D rings
                 drawScope.drawOval(
-                    color.copy(alpha = 0.5f),
+                    ringColor,
                     topLeft = Offset(center.x - radius, center.y - radius * 0.35f),
                     size = Size(radius * 2f, radius * 0.7f),
-                    style = Stroke(width = shape.strokeWidth * 0.7f)
+                    style = Stroke(width = shape.strokeWidth * 0.8f)
                 )
+                drawScope.drawCircle(strokeColor, radius = radius, center = center, style = Stroke(width = shape.strokeWidth))
+            }
+            ShapeType.HEMISPHERE -> {
+                val rH = height * 0.28f
+                val strokeColor = getPartColor(shape, "stroke", color)
+                val domeColor = getPartColor(shape, "dome", if (shape.isFilled) color.copy(alpha = 0.8f) else Color(0x334DD0E1))
+                val baseColor = getPartColor(shape, "base", if (shape.isFilled) color.copy(alpha = 0.6f) else Color(0x330097A7))
+
+                // Dome
+                val domePath = Path().apply {
+                    moveTo(minX, maxY - rH / 2f)
+                    cubicTo(minX, minY, maxX, minY, maxX, maxY - rH / 2f)
+                    close()
+                }
+                drawScope.drawPath(domePath, domeColor, style = Fill)
+                drawScope.drawPath(domePath, strokeColor, style = Stroke(width = shape.strokeWidth))
+
+                // Flat base oval
+                drawScope.drawOval(baseColor, topLeft = Offset(minX, maxY - rH), size = Size(width, rH), style = Fill)
+                drawScope.drawOval(strokeColor, topLeft = Offset(minX, maxY - rH), size = Size(width, rH), style = Stroke(width = shape.strokeWidth))
             }
             ShapeType.PYRAMID -> {
                 val apex = Offset(minX + width / 2f, minY)
-                val path = Path().apply {
-                    moveTo(apex.x, apex.y)
-                    lineTo(minX, maxY - height * 0.15f)
-                    lineTo(minX + width * 0.4f, maxY)
+                val strokeColor = getPartColor(shape, "stroke", color)
+                val face1Color = getPartColor(shape, "face1", if (shape.isFilled) color.copy(alpha = 0.85f) else Color(0x33FF8A65))
+                val face2Color = getPartColor(shape, "face2", if (shape.isFilled) color.copy(alpha = 0.65f) else Color(0x33E64A19))
+                val baseColor = getPartColor(shape, "base", Color(0x22BF360C))
+
+                // Base floor
+                val basePath = Path().apply {
+                    moveTo(minX, maxY - height * 0.15f)
+                    lineTo(minX + width * 0.42f, maxY)
+                    lineTo(maxX, maxY - height * 0.1f)
+                    lineTo(minX + width * 0.58f, maxY - height * 0.25f)
                     close()
                 }
-                drawScope.drawPath(path, color, style = style)
+                drawScope.drawPath(basePath, baseColor, style = Fill)
+
+                // Left face
+                val path1 = Path().apply {
+                    moveTo(apex.x, apex.y)
+                    lineTo(minX, maxY - height * 0.15f)
+                    lineTo(minX + width * 0.42f, maxY)
+                    close()
+                }
+                drawScope.drawPath(path1, face1Color, style = Fill)
+                drawScope.drawPath(path1, strokeColor, style = Stroke(width = shape.strokeWidth))
+
+                // Right face
                 val path2 = Path().apply {
                     moveTo(apex.x, apex.y)
-                    lineTo(minX + width * 0.4f, maxY)
+                    lineTo(minX + width * 0.42f, maxY)
                     lineTo(maxX, maxY - height * 0.1f)
                     close()
                 }
-                drawScope.drawPath(path2, color, style = style)
+                drawScope.drawPath(path2, face2Color, style = Fill)
+                drawScope.drawPath(path2, strokeColor, style = Stroke(width = shape.strokeWidth))
+            }
+            ShapeType.TRIANGULAR_PRISM -> {
+                val d = width * 0.28f
+                val strokeColor = getPartColor(shape, "stroke", color)
+                val frontColor = getPartColor(shape, "front", if (shape.isFilled) color.copy(alpha = 0.9f) else Color(0x33FFD54F))
+                val topColor = getPartColor(shape, "top", if (shape.isFilled) color.copy(alpha = 0.7f) else Color(0x33FFFF8D))
+                val sideColor = getPartColor(shape, "side", if (shape.isFilled) color.copy(alpha = 0.5f) else Color(0x33FFA000))
+
+                // Front triangle face
+                val frontTri = Path().apply {
+                    moveTo(minX + (width - d) / 2f, minY + d)
+                    lineTo(minX, maxY)
+                    lineTo(maxX - d, maxY)
+                    close()
+                }
+                drawScope.drawPath(frontTri, frontColor, style = Fill)
+                drawScope.drawPath(frontTri, strokeColor, style = Stroke(width = shape.strokeWidth))
+
+                // Top slope
+                val topPath = Path().apply {
+                    moveTo(minX + (width - d) / 2f, minY + d)
+                    lineTo(minX + width / 2f, minY)
+                    lineTo(maxX, maxY - d)
+                    lineTo(maxX - d, maxY)
+                    close()
+                }
+                drawScope.drawPath(topPath, topColor, style = Fill)
+                drawScope.drawPath(topPath, strokeColor, style = Stroke(width = shape.strokeWidth))
+
+                // Side / Back edge
+                val sidePath = Path().apply {
+                    moveTo(minX + (width - d) / 2f, minY + d)
+                    lineTo(minX + width / 2f, minY)
+                    lineTo(minX + d, maxY - d)
+                    lineTo(minX, maxY)
+                    close()
+                }
+                drawScope.drawPath(sidePath, sideColor, style = Fill)
+                drawScope.drawPath(sidePath, strokeColor, style = Stroke(width = shape.strokeWidth))
+            }
+            ShapeType.TORUS -> {
+                val cx = minX + width / 2f
+                val cy = minY + height / 2f
+                val strokeColor = getPartColor(shape, "stroke", color)
+                val outerColor = getPartColor(shape, "outer", if (shape.isFilled) color.copy(alpha = 0.85f) else Color(0x33F06292))
+                val innerColor = getPartColor(shape, "inner", if (shape.isFilled) Color.White.copy(alpha = 0.9f) else Color(0x33AD1457))
+                val ringColor = getPartColor(shape, "ring", Color(0xFFF8BBD0))
+
+                // Outer donut ellipse
+                drawScope.drawOval(outerColor, topLeft = Offset(minX, minY + height * 0.1f), size = Size(width, height * 0.8f), style = Fill)
+                drawScope.drawOval(strokeColor, topLeft = Offset(minX, minY + height * 0.1f), size = Size(width, height * 0.8f), style = Stroke(width = shape.strokeWidth))
+
+                // Highlight ring
+                drawScope.drawOval(ringColor, topLeft = Offset(minX + width * 0.15f, minY + height * 0.22f), size = Size(width * 0.7f, height * 0.56f), style = Stroke(width = shape.strokeWidth * 0.8f))
+
+                // Inner hole
+                val holeW = width * 0.36f
+                val holeH = height * 0.3f
+                drawScope.drawOval(innerColor, topLeft = Offset(cx - holeW / 2f, cy - holeH / 2f), size = Size(holeW, holeH), style = Fill)
+                drawScope.drawOval(strokeColor, topLeft = Offset(cx - holeW / 2f, cy - holeH / 2f), size = Size(holeW, holeH), style = Stroke(width = shape.strokeWidth))
+            }
+            ShapeType.HEXAGONAL_PRISM -> {
+                val d = height * 0.22f
+                val strokeColor = getPartColor(shape, "stroke", color)
+                val topColor = getPartColor(shape, "top", if (shape.isFilled) color.copy(alpha = 0.85f) else Color(0x33AED581))
+                val frontColor = getPartColor(shape, "front", if (shape.isFilled) color.copy(alpha = 0.7f) else Color(0x337CB342))
+                val sideColor = getPartColor(shape, "side", if (shape.isFilled) color.copy(alpha = 0.55f) else Color(0x33558B2F))
+
+                // Front rectangular face
+                val frontRect = Path().apply {
+                    moveTo(minX + width * 0.25f, minY + d)
+                    lineTo(minX + width * 0.75f, minY + d)
+                    lineTo(minX + width * 0.75f, maxY)
+                    lineTo(minX + width * 0.25f, maxY)
+                    close()
+                }
+                drawScope.drawPath(frontRect, frontColor, style = Fill)
+                drawScope.drawPath(frontRect, strokeColor, style = Stroke(width = shape.strokeWidth))
+
+                // Left & Right side faces
+                val leftFace = Path().apply {
+                    moveTo(minX, minY + d * 0.6f)
+                    lineTo(minX + width * 0.25f, minY + d)
+                    lineTo(minX + width * 0.25f, maxY)
+                    lineTo(minX, maxY - d * 0.4f)
+                    close()
+                }
+                drawScope.drawPath(leftFace, sideColor, style = Fill)
+                drawScope.drawPath(leftFace, strokeColor, style = Stroke(width = shape.strokeWidth))
+
+                val rightFace = Path().apply {
+                    moveTo(maxX, minY + d * 0.6f)
+                    lineTo(minX + width * 0.75f, minY + d)
+                    lineTo(minX + width * 0.75f, maxY)
+                    lineTo(maxX, maxY - d * 0.4f)
+                    close()
+                }
+                drawScope.drawPath(rightFace, sideColor, style = Fill)
+                drawScope.drawPath(rightFace, strokeColor, style = Stroke(width = shape.strokeWidth))
+
+                // Top hexagon face
+                val topHex = Path().apply {
+                    moveTo(minX + width * 0.5f, minY)
+                    lineTo(maxX, minY + d * 0.6f)
+                    lineTo(minX + width * 0.75f, minY + d)
+                    lineTo(minX + width * 0.25f, minY + d)
+                    lineTo(minX, minY + d * 0.6f)
+                    close()
+                }
+                drawScope.drawPath(topHex, topColor, style = Fill)
+                drawScope.drawPath(topHex, strokeColor, style = Stroke(width = shape.strokeWidth))
+            }
+            ShapeType.CAPSULE -> {
+                val strokeColor = getPartColor(shape, "stroke", color)
+                val topCapColor = getPartColor(shape, "top_cap", if (shape.isFilled) color.copy(alpha = 0.85f) else Color(0x334FC3F7))
+                val bodyColor = getPartColor(shape, "body", if (shape.isFilled) color.copy(alpha = 0.7f) else Color(0x330288D1))
+                val bottomCapColor = getPartColor(shape, "bottom_cap", if (shape.isFilled) color.copy(alpha = 0.55f) else Color(0x3301579B))
+                val r = width / 2f
+
+                // Middle cylindrical body
+                drawScope.drawRect(bodyColor, topLeft = Offset(minX, minY + r), size = Size(width, height - 2 * r), style = Fill)
+                drawScope.drawLine(strokeColor, Offset(minX, minY + r), Offset(minX, maxY - r), strokeWidth = shape.strokeWidth)
+                drawScope.drawLine(strokeColor, Offset(maxX, minY + r), Offset(maxX, maxY - r), strokeWidth = shape.strokeWidth)
+
+                // Top cap
+                val topCap = Path().apply {
+                    arcTo(androidx.compose.ui.geometry.Rect(minX, minY, maxX, minY + 2 * r), 180f, 180f, false)
+                    close()
+                }
+                drawScope.drawPath(topCap, topCapColor, style = Fill)
+                drawScope.drawPath(topCap, strokeColor, style = Stroke(width = shape.strokeWidth))
+
+                // Bottom cap
+                val bottomCap = Path().apply {
+                    arcTo(androidx.compose.ui.geometry.Rect(minX, maxY - 2 * r, maxX, maxY), 0f, 180f, false)
+                    close()
+                }
+                drawScope.drawPath(bottomCap, bottomCapColor, style = Fill)
+                drawScope.drawPath(bottomCap, strokeColor, style = Stroke(width = shape.strokeWidth))
             }
         }
+    }
+
+    private fun getPartColor(shape: CanvasElement.Shape, key: String, defaultColor: Color): Color {
+        val argb = shape.partColors[key]
+        return if (argb != null) Color(argb) else defaultColor
     }
 
     private fun drawText(drawScope: DrawScope, textEl: CanvasElement.Text) {
@@ -794,7 +1070,116 @@ object CanvasRenderer {
                 isAntiAlias = true
                 typeface = android.graphics.Typeface.DEFAULT_BOLD
             }
-            canvas.nativeCanvas.drawText(textEl.text, textEl.x, textEl.y, paint)
+
+            val text = textEl.text
+            if (text.isEmpty()) return@drawIntoCanvas
+
+            if (textEl.isHandwritingAnimated) {
+                val totalChars = text.length
+                val progress = textEl.animationProgress.coerceIn(0f, 1f)
+                val totalWidth = paint.measureText(text)
+
+                // 1. Text ink reveal synchronized smoothly with pen position
+                if (progress >= 1f) {
+                    canvas.nativeCanvas.drawText(text, textEl.x, textEl.y, paint)
+                } else {
+                    val currentProgressX = textEl.x + totalWidth * progress
+                    canvas.save()
+                    // Clip rect smoothly reveals letter strokes right at the pen tip
+                    canvas.clipRect(
+                        textEl.x - 20f,
+                        textEl.y - textEl.fontSize * 1.5f,
+                        currentProgressX,
+                        textEl.y + textEl.fontSize * 0.8f
+                    )
+                    canvas.nativeCanvas.drawText(text, textEl.x, textEl.y, paint)
+                    canvas.restore()
+                }
+
+                // 2. Animate the hand holding the pen while actively writing
+                if (textEl.isPlayingAnimation || (progress > 0f && progress < 1f)) {
+                    val currentProgressX = textEl.x + totalWidth * progress
+                    val charFloat = (totalChars * progress).coerceIn(0f, (totalChars - 1).toFloat())
+                    val charIndex = charFloat.toInt().coerceIn(0, totalChars - 1)
+                    val currentChar = text[charIndex]
+                    val isSpace = currentChar == ' '
+                    val charFraction = charFloat - charIndex
+
+                    // Natural handwriting strokes:
+                    // Up-down vertical oscillations mimicking writing letters (cursive/print loops and vertical stems)
+                    val strokePhase = charFraction * (Math.PI.toFloat() * 2f)
+                    val h = textEl.fontSize
+                    val strokeY = if (isSpace) {
+                        -h * 0.40f // Lift pen off the whiteboard when moving between words
+                    } else {
+                        // Harmonic handwriting oscillation: rises on upstroke, dips on base
+                        (-sin(strokePhase * 2f) * 0.22f + cos(strokePhase * 3f) * 0.08f) * h
+                    }
+
+                    val tipX = currentProgressX
+                    val baselineY = textEl.y
+                    val tipY = textEl.y - textEl.fontSize * 0.25f + strokeY
+
+                    val handScale = (textEl.fontSize / 44f).coerceIn(0.7f, 1.9f)
+                    drawHandHoldingPen(
+                        drawScope = drawScope,
+                        tipX = tipX,
+                        tipY = tipY,
+                        baselineY = baselineY,
+                        scale = handScale,
+                        handStyle = textEl.handStyle,
+                        isPenLifted = isSpace
+                    )
+                }
+            } else {
+                canvas.nativeCanvas.drawText(text, textEl.x, textEl.y, paint)
+            }
+        }
+    }
+
+    fun drawHandHoldingPen(
+        drawScope: DrawScope,
+        tipX: Float,
+        tipY: Float,
+        baselineY: Float = tipY,
+        scale: Float = 1f,
+        handStyle: String = "pen",
+        isPenLifted: Boolean = false
+    ) {
+        val s = scale.coerceIn(0.6f, 2.5f)
+        val emojiSize = (44f * s * 1.35f).coerceIn(36f, 150f)
+
+        drawScope.drawIntoCanvas { canvas ->
+            // 1. Soft drop shadow on the whiteboard surface under the pen nib
+            val shadowPaint = Paint().apply {
+                color = android.graphics.Color.argb(40, 25, 25, 25)
+                isAntiAlias = true
+            }
+            val shadowLiftOffset = if (isPenLifted) 12f * s else 3f * s
+            canvas.nativeCanvas.drawOval(
+                tipX - 3f * s,
+                baselineY + shadowLiftOffset - 2f * s,
+                tipX + 18f * s,
+                baselineY + shadowLiftOffset + 7f * s,
+                shadowPaint
+            )
+
+            // 2. Draw the iconic Hand with Pen (✍️)
+            val iconPaint = Paint().apply {
+                textSize = emojiSize
+                isAntiAlias = true
+            }
+
+            // In Noto Color Emoji, the pen nib of ✍️ is located near (x + emojiSize * 0.12f, y - emojiSize * 0.10f)
+            val drawX = tipX - emojiSize * 0.12f
+            val drawY = tipY + emojiSize * 0.10f
+
+            // Dynamic handwriting tilt while moving
+            canvas.save()
+            val tiltAngle = if (isPenLifted) -4f else (sin(tipX * 0.08) * 3f).toFloat()
+            canvas.rotate(tiltAngle, tipX, tipY)
+            canvas.nativeCanvas.drawText("\u270D\uFE0F", drawX, drawY, iconPaint)
+            canvas.restore()
         }
     }
 

@@ -471,7 +471,8 @@ fun WhiteboardScreen(
             val center = sel.getCenter()
             val bounds = sel.getBounds()
 
-            val cardWidthPx = with(density) { 264.dp.toPx() }
+            val isText = sel is CanvasElement.Text
+            val cardWidthPx = with(density) { (if (isText) 304.dp else 264.dp).toPx() }
             val cardHeightPx = with(density) { 44.dp.toPx() }
             val topBarHeightPx = with(density) { 72.dp.toPx() }
             val bottomBarHeightPx = with(density) { 80.dp.toPx() }
@@ -509,6 +510,14 @@ fun WhiteboardScreen(
                     modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
+                    if (isText) {
+                        IconButton(
+                            onClick = { viewModel.playHandwritingAnimation(sel.id) },
+                            modifier = Modifier.size(36.dp)
+                        ) {
+                            Icon(Icons.Default.Draw, contentDescription = "Play Handwriting Animation", tint = Color(0xFFE040FB), modifier = Modifier.size(18.dp))
+                        }
+                    }
                     IconButton(
                         onClick = { viewModel.openEditDialogForSelected() },
                         modifier = Modifier.size(36.dp)
@@ -949,8 +958,8 @@ fun WhiteboardScreen(
 
     if (uiState.showTextDialog) {
         TextDialog(
-            onAddText = { text, color, size ->
-                viewModel.addTextElement(text, color, size)
+            onAddText = { text, color, size, isAnimated, handStyle ->
+                viewModel.addTextElement(text, color, size, isAnimated, handStyle)
             },
             onDismiss = { viewModel.dismissAllDialogs() }
         )
@@ -1060,6 +1069,9 @@ fun WhiteboardScreen(
             selectedElement = selected,
             onColorSelected = { color -> viewModel.updateSelectedElementColor(color) },
             onFillToggle = { viewModel.toggleSelectedShapeFill() },
+            onShapePartColorSelected = { partKey, color -> viewModel.updateSelectedShapePartColor(partKey, color) },
+            onUpdateTextAnimation = { isAnimated, style -> viewModel.updateSelectedTextAnimation(isAnimated, style) },
+            onPlayTextAnimation = { selected?.id?.let { viewModel.playHandwritingAnimation(it) } },
             onDismiss = { viewModel.dismissAllDialogs() }
         )
     }

@@ -583,6 +583,59 @@ class WhiteboardViewModel(application: Application) : AndroidViewModel(applicati
         }
     }
 
+    fun updateSelectedShapePartColor(partKey: String, color: Color) {
+        val selectedId = _uiState.value.selectedElementId ?: return
+        pushUndoState()
+        updateElement(selectedId) { element ->
+            if (element is CanvasElement.Shape) {
+                element.withPartColor(partKey, color.toArgb())
+            } else element
+        }
+    }
+
+    fun updateSelectedTextAnimation(isAnimated: Boolean, handStyle: String) {
+        val selectedId = _uiState.value.selectedElementId ?: return
+        pushUndoState()
+        updateElement(selectedId) { element ->
+            if (element is CanvasElement.Text) {
+                element.copy(isHandwritingAnimated = isAnimated, handStyle = handStyle)
+            } else element
+        }
+        if (isAnimated) {
+            playHandwritingAnimation(selectedId)
+        }
+    }
+
+    private val animationJobs = mutableMapOf<String, kotlinx.coroutines.Job>()
+
+    fun playHandwritingAnimation(elementId: String, durationMs: Long = 2600L) {
+        animationJobs[elementId]?.cancel()
+        animationJobs[elementId] = viewModelScope.launch {
+            val textLen = _uiState.value.pages.getOrNull(_uiState.value.currentPageIndex)
+                ?.elements?.find { it.id == elementId }?.let { (it as? CanvasElement.Text)?.text?.length } ?: 10
+            val dynamicDuration = (textLen * 160L).coerceIn(1400L, 5000L)
+
+            val startTime = System.currentTimeMillis()
+            updateElement(elementId) { el ->
+                if (el is CanvasElement.Text) {
+                    el.copy(isHandwritingAnimated = true, isPlayingAnimation = true, animationProgress = 0f)
+                } else el
+            }
+
+            while (true) {
+                val elapsed = System.currentTimeMillis() - startTime
+                val fraction = (elapsed.toFloat() / dynamicDuration.toFloat()).coerceIn(0f, 1f)
+                updateElement(elementId) { el ->
+                    if (el is CanvasElement.Text) {
+                        el.copy(animationProgress = fraction, isPlayingAnimation = fraction < 1f)
+                    } else el
+                }
+                if (fraction >= 1f) break
+                kotlinx.coroutines.delay(16L)
+            }
+        }
+    }
+
     fun updateElement(elementId: String, transform: (CanvasElement) -> CanvasElement) {
         val currIdx = _uiState.value.currentPageIndex
         val updatedPages = _uiState.value.pages.toMutableList()
@@ -609,8 +662,14 @@ class WhiteboardViewModel(application: Application) : AndroidViewModel(applicati
         return Offset(cx, cy)
     }
 
-    // Add Text Element
-    fun addTextElement(text: String, color: Color, size: Float) {
+    // Add Text Element with Handwriting Animation Support
+    fun addTextElement(
+        text: String,
+        color: Color,
+        size: Float,
+        isHandwritingAnimated: Boolean = false,
+        handStyle: String = "pen"
+    ) {
         val center = getViewportCenterOffset()
         val element = CanvasElement.Text(
             id = "text_${System.currentTimeMillis()}",
@@ -619,9 +678,16 @@ class WhiteboardViewModel(application: Application) : AndroidViewModel(applicati
             x = center.x - 100f,
             y = center.y,
             colorArgb = color.toArgb(),
-            fontSize = size
+            fontSize = size,
+            isHandwritingAnimated = isHandwritingAnimated,
+            handStyle = handStyle,
+            animationProgress = if (isHandwritingAnimated) 0f else 1f,
+            isPlayingAnimation = isHandwritingAnimated
         )
         addElementToCurrentPage(element)
+        if (isHandwritingAnimated) {
+            playHandwritingAnimation(element.id)
+        }
     }
 
     // Add Math Formula Element

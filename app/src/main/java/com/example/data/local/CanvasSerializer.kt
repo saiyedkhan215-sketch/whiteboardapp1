@@ -58,6 +58,11 @@ object CanvasSerializer {
                         elObj.put("colorArgb", el.colorArgb)
                         elObj.put("strokeWidth", el.strokeWidth.toDouble())
                         elObj.put("isFilled", el.isFilled)
+                        if (el.partColors.isNotEmpty()) {
+                            val partsObj = JSONObject()
+                            el.partColors.forEach { (k, v) -> partsObj.put(k, v) }
+                            elObj.put("partColors", partsObj)
+                        }
                     }
                     is CanvasElement.Text -> {
                         elObj.put("type", "text")
@@ -66,6 +71,9 @@ object CanvasSerializer {
                         elObj.put("y", el.y.toDouble())
                         elObj.put("colorArgb", el.colorArgb)
                         elObj.put("fontSize", el.fontSize.toDouble())
+                        elObj.put("isHandwritingAnimated", el.isHandwritingAnimated)
+                        elObj.put("handStyle", el.handStyle)
+                        elObj.put("animationProgress", el.animationProgress.toDouble())
                     }
                     is CanvasElement.Formula -> {
                         elObj.put("type", "formula")
@@ -194,6 +202,15 @@ object CanvasSerializer {
                             "shape" -> {
                                 val shapeName = elObj.optString("shapeType", "RECT")
                                 val shapeType = try { ShapeType.valueOf(shapeName) } catch (_: Exception) { ShapeType.RECT }
+                                val partsObj = elObj.optJSONObject("partColors")
+                                val partColors = mutableMapOf<String, Int>()
+                                if (partsObj != null) {
+                                    val keys = partsObj.keys()
+                                    while (keys.hasNext()) {
+                                        val k = keys.next()
+                                        partColors[k] = partsObj.optInt(k)
+                                    }
+                                }
                                 elements.add(
                                     CanvasElement.Shape(
                                         id = id,
@@ -206,6 +223,7 @@ object CanvasSerializer {
                                         colorArgb = elObj.optInt("colorArgb", 0xFF000000.toInt()),
                                         strokeWidth = elObj.optDouble("strokeWidth", 8.0).toFloat(),
                                         isFilled = elObj.optBoolean("isFilled", false),
+                                        partColors = partColors,
                                         rotation = rotation,
                                         scale = scale
                                     )
@@ -221,6 +239,9 @@ object CanvasSerializer {
                                         y = elObj.optDouble("y", 0.0).toFloat(),
                                         colorArgb = elObj.optInt("colorArgb", 0xFF000000.toInt()),
                                         fontSize = elObj.optDouble("fontSize", 48.0).toFloat(),
+                                        isHandwritingAnimated = elObj.optBoolean("isHandwritingAnimated", false),
+                                        handStyle = elObj.optString("handStyle", "pen"),
+                                        animationProgress = elObj.optDouble("animationProgress", 1.0).toFloat(),
                                         rotation = rotation,
                                         scale = scale
                                     )
