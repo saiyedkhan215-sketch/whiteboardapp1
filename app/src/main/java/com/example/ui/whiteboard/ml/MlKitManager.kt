@@ -95,18 +95,18 @@ object MlKitManager {
         inkBuilder.addStroke(strokeBuilder.build())
         val ink = inkBuilder.build()
 
-        // Try shapes recognizer first if downloaded
+        // 1. Try shapes recognizer first
         val shapesClient = shapesRecognizer
-        if (shapesClient != null && isShapesModelDownloaded) {
+        if (shapesClient != null) {
             val shapeResult = recognizeWithClient(shapesClient, ink)
-            if (shapeResult != null && shapeResult.second >= 0.35f) {
+            if (shapeResult != null && shapeResult.second >= 0.25f) {
                 return@withContext shapeResult
             }
         }
 
-        // Try text recognizer if shapes didn't match with high confidence
+        // 2. Try text recognizer if shapes didn't match
         val textClient = textRecognizer
-        if (textClient != null && isTextModelDownloaded) {
+        if (textClient != null) {
             val textResult = recognizeWithClient(textClient, ink)
             if (textResult != null) {
                 return@withContext textResult
@@ -139,9 +139,11 @@ object MlKitManager {
     fun mapCandidateToShapeType(candidate: String): ShapeType? {
         val upper = candidate.uppercase().trim()
         return when {
-            upper.contains("RECTANGLE") || upper.contains("BOX") -> ShapeType.RECT
+            upper.contains("RECTANGLE") || upper.contains("RECT") || upper.contains("BOX") -> ShapeType.RECT
             upper.contains("SQUARE") -> ShapeType.SQUARE
-            upper.contains("CIRCLE") || upper.contains("ELLIPSE") || upper.contains("OVAL") -> ShapeType.CIRCLE
+            upper.contains("CIRCLE") -> ShapeType.CIRCLE
+            upper.contains("ELLIPSE") || upper.contains("OVAL") -> ShapeType.OVAL
+            upper.contains("RIGHT_TRIANGLE") || upper.contains("RIGHT TRIANGLE") -> ShapeType.RIGHT_TRIANGLE
             upper.contains("TRIANGLE") -> ShapeType.TRIANGLE
             upper.contains("STAR") -> ShapeType.STAR
             upper.contains("ARROW") -> ShapeType.ARROW
@@ -150,7 +152,11 @@ object MlKitManager {
             upper.contains("HEXAGON") -> ShapeType.HEXAGON
             upper.contains("PENTAGON") -> ShapeType.PENTAGON
             upper.contains("HEART") -> ShapeType.HEART
+            upper.contains("CROSS") -> ShapeType.CROSS
             upper.contains("CLOUD") -> ShapeType.CLOUD
+            upper.contains("PARALLELOGRAM") || upper.contains("PARALLEL") -> ShapeType.PARALLEL
+            upper.contains("TRAPEZOID") -> ShapeType.TRAPEZOID
+            upper.contains("SEMICIRCLE") -> ShapeType.SEMICIRCLE
             else -> null
         }
     }
