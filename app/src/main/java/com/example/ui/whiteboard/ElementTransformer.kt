@@ -12,7 +12,11 @@ enum class TransformHandle {
     TOP_LEFT,
     TOP_RIGHT,
     BOTTOM_LEFT,
-    BOTTOM_RIGHT
+    BOTTOM_RIGHT,
+    TOP,
+    BOTTOM,
+    LEFT,
+    RIGHT
 }
 
 object ElementTransformer {
@@ -54,7 +58,15 @@ object ElementTransformer {
         if (hypot(local.x - b.left, local.y - b.bottom) < touchRadius) return TransformHandle.BOTTOM_LEFT
         if (hypot(local.x - b.right, local.y - b.bottom) < touchRadius) return TransformHandle.BOTTOM_RIGHT
 
-        // 3. Check Body for dragging
+        // 3. Check 4 Side handles (Left, Right, Top, Bottom) for sideways/vertical resizing
+        val midX = (b.left + b.right) / 2f
+        val midY = (b.top + b.bottom) / 2f
+        if (hypot(local.x - b.left, local.y - midY) < touchRadius) return TransformHandle.LEFT
+        if (hypot(local.x - b.right, local.y - midY) < touchRadius) return TransformHandle.RIGHT
+        if (hypot(local.x - midX, local.y - b.top) < touchRadius) return TransformHandle.TOP
+        if (hypot(local.x - midX, local.y - b.bottom) < touchRadius) return TransformHandle.BOTTOM
+
+        // 4. Check Body for dragging
         val margin = 28f / element.scale
         if (local.x in (b.left - margin)..(b.right + margin) && local.y in (b.top - margin)..(b.bottom + margin)) {
             return TransformHandle.BODY

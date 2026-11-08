@@ -2,6 +2,7 @@ package com.example.ui.whiteboard
 
 import android.graphics.Paint
 import android.graphics.Rect
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.*
@@ -13,7 +14,15 @@ import androidx.compose.ui.graphics.nativeCanvas
 import com.example.data.model.*
 import kotlin.math.*
 
+import android.graphics.BitmapFactory
+import java.io.InputStream
+import java.net.URL
+import java.util.concurrent.ConcurrentHashMap
+
 object CanvasRenderer {
+
+    private val imageCache = ConcurrentHashMap<String, ImageBitmap?>()
+    private val loadingUris = ConcurrentHashMap.newKeySet<String>()
 
     fun drawBoardTexture(drawScope: DrawScope, texture: BoardTexture, isDarkBackground: Boolean) {
         val w = drawScope.size.width
@@ -170,7 +179,7 @@ object CanvasRenderer {
             is CanvasElement.Table -> drawTable(drawScope, element)
             is CanvasElement.Sticker -> drawSticker(drawScope, element)
             is CanvasElement.ScienceDiagram -> drawScience(drawScope, element)
-            is CanvasElement.Image -> {} // Handled via Coil or bitmap
+            is CanvasElement.Image -> drawImage(drawScope, element)
         }
     }
 
@@ -276,8 +285,9 @@ object CanvasRenderer {
                 style = Fill
             )
 
-            // 4 Corner Resize Handles (Large 32px circular knobs)
-            val handleRadius = 16f / element.scale
+            // Square Marking Points / Handles (Corner & Edge handles)
+            val handleSize = 28f / element.scale
+            val halfHandle = handleSize / 2f
             val corners = listOf(
                 Offset(b.left, b.top),
                 Offset(b.right, b.top),
@@ -286,32 +296,58 @@ object CanvasRenderer {
             )
             corners.forEach { c ->
                 // Shadow
-                drawScope.drawCircle(
+                drawScope.drawRoundRect(
                     color = Color(0x33000000),
-                    radius = handleRadius + 1.5f / element.scale,
-                    center = Offset(c.x, c.y + 1f / element.scale),
-                    style = Fill
+                    topLeft = Offset(c.x - halfHandle, c.y - halfHandle + 1.5f / element.scale),
+                    size = Size(handleSize, handleSize),
+                    cornerRadius = CornerRadius(4f / element.scale)
                 )
-                // Background
-                drawScope.drawCircle(
+                // White background
+                drawScope.drawRoundRect(
                     color = handleBg,
-                    radius = handleRadius,
-                    center = c,
-                    style = Fill
+                    topLeft = Offset(c.x - halfHandle, c.y - halfHandle),
+                    size = Size(handleSize, handleSize),
+                    cornerRadius = CornerRadius(4f / element.scale)
                 )
                 // Border
-                drawScope.drawCircle(
+                drawScope.drawRoundRect(
                     color = handleBorder,
-                    radius = handleRadius,
-                    center = c,
-                    style = Stroke(width = 2.8f / element.scale)
+                    topLeft = Offset(c.x - halfHandle, c.y - halfHandle),
+                    size = Size(handleSize, handleSize),
+                    cornerRadius = CornerRadius(4f / element.scale),
+                    style = Stroke(width = 2.5f / element.scale)
                 )
-                // Center accent dot
-                drawScope.drawCircle(
+                // Inner square accent
+                val accentSize = 8f / element.scale
+                drawScope.drawRect(
                     color = Color(0xFF1976D2),
-                    radius = 5f / element.scale,
-                    center = c,
-                    style = Fill
+                    topLeft = Offset(c.x - accentSize / 2f, c.y - accentSize / 2f),
+                    size = Size(accentSize, accentSize)
+                )
+            }
+
+            // 4 Edge Midpoint Square Marking Handles
+            val midpoints = listOf(
+                Offset((b.left + b.right) / 2f, b.top),
+                Offset((b.left + b.right) / 2f, b.bottom),
+                Offset(b.left, (b.top + b.bottom) / 2f),
+                Offset(b.right, (b.top + b.bottom) / 2f)
+            )
+            val midSize = 20f / element.scale
+            val halfMid = midSize / 2f
+            midpoints.forEach { m ->
+                drawScope.drawRoundRect(
+                    color = handleBg,
+                    topLeft = Offset(m.x - halfMid, m.y - halfMid),
+                    size = Size(midSize, midSize),
+                    cornerRadius = CornerRadius(3f / element.scale)
+                )
+                drawScope.drawRoundRect(
+                    color = handleBorder,
+                    topLeft = Offset(m.x - halfMid, m.y - halfMid),
+                    size = Size(midSize, midSize),
+                    cornerRadius = CornerRadius(3f / element.scale),
+                    style = Stroke(width = 2f / element.scale)
                 )
             }
 
@@ -663,6 +699,19 @@ object CanvasRenderer {
                 }
                 drawScope.drawPath(markerPath, color, style = Stroke(width = shape.strokeWidth * 0.7f))
             }
+            ShapeType.CLOUD -> {
+                val r = height * 0.35f
+                val path = Path().apply {
+                    moveTo(minX + r, maxY - r * 0.3f)
+                    lineTo(maxX - r, maxY - r * 0.3f)
+                    arcTo(androidx.compose.ui.geometry.Rect(maxX - 2 * r, maxY - 2 * r, maxX, maxY), 90f, -180f, false)
+                    arcTo(androidx.compose.ui.geometry.Rect(minX + width * 0.45f, minY, minX + width * 0.85f, minY + height * 0.7f), 0f, -180f, false)
+                    arcTo(androidx.compose.ui.geometry.Rect(minX + width * 0.15f, minY + height * 0.08f, minX + width * 0.55f, minY + height * 0.75f), 10f, -180f, false)
+                    arcTo(androidx.compose.ui.geometry.Rect(minX, maxY - 2 * r, minX + 2 * r, maxY), 270f, -180f, false)
+                    close()
+                }
+                drawScope.drawPath(path, color, style = style)
+            }
             // 3D Shapes
             ShapeType.CUBE -> {
                 val d = width * 0.3f
@@ -981,17 +1030,114 @@ object CanvasRenderer {
                 }
             }
             else -> {
-                drawScope.drawCircle(Color(0xFFE67E22), radius = s * 0.45f, center = Offset(x + s / 2f, y + s / 2f), style = Fill)
+                val emoji = getStickerEmoji(sticker.stickerId)
+                drawScope.drawCircle(
+                    color = Color(0xFFF1F5F9),
+                    radius = s * 0.46f,
+                    center = Offset(x + s / 2f, y + s / 2f),
+                    style = Fill
+                )
+                drawScope.drawCircle(
+                    color = Color(0xFFCBD5E1),
+                    radius = s * 0.46f,
+                    center = Offset(x + s / 2f, y + s / 2f),
+                    style = Stroke(3f)
+                )
                 drawScope.drawIntoCanvas { canvas ->
                     val paint = Paint().apply {
-                        color = android.graphics.Color.WHITE
-                        textSize = s * 0.45f
+                        textSize = s * 0.48f
                         isAntiAlias = true
                         textAlign = Paint.Align.CENTER
                     }
-                    canvas.nativeCanvas.drawText("★", x + s / 2f, y + s * 0.65f, paint)
+                    canvas.nativeCanvas.drawText(emoji, x + s / 2f, y + s * 0.68f, paint)
                 }
             }
+        }
+    }
+
+    fun getStickerEmoji(id: String): String {
+        return when (id) {
+            "star" -> "⭐"
+            "trophy" -> "🏆"
+            "medal" -> "🥇"
+            "silver_medal" -> "🥈"
+            "bronze_medal" -> "🥉"
+            "crown" -> "👑"
+            "a_plus" -> "🅰️"
+            "hundred" -> "💯"
+            "thumbs_up" -> "👍"
+            "excellent" -> "🌟"
+            "good_job" -> "👏"
+            "target" -> "🎯"
+            "grad_cap" -> "🎓"
+            "books" -> "📚"
+            "microscope" -> "🔬"
+            "test_tube" -> "🧪"
+            "verified" -> "✅"
+            "needs_work" -> "⚠️"
+            "pin" -> "📌"
+            "priority" -> "🚨"
+            "question" -> "❓"
+            "idea" -> "💡"
+            "perfect" -> "💎"
+            "well_done" -> "🎉"
+            "star_student" -> "🏅"
+            "keep_going" -> "🚀"
+            "great_effort" -> "🙌"
+            "reviewed" -> "🔍"
+            "rejected" -> "❌"
+            "favorite" -> "❤️"
+            "alarm" -> "⏰"
+            "award" -> "🎖️"
+            "smile" -> "😀"
+            "heart_eyes" -> "😍"
+            "party" -> "🥳"
+            "thinking" -> "🤔"
+            "cool" -> "😎"
+            "mind_blown" -> "🤯"
+            "rocket" -> "🚀"
+            "fire" -> "🔥"
+            "sparkles" -> "✨"
+            "rainbow" -> "🌈"
+            "lightning" -> "⚡"
+            "coffee" -> "☕"
+            "clap" -> "👏"
+            "bulb" -> "💡"
+            "heart" -> "❤️"
+            "gem" -> "💎"
+            "pi" -> "π"
+            "sum" -> "∑"
+            "integral" -> "∫"
+            "sqrt" -> "√"
+            "infinity" -> "∞"
+            "not_equal" -> "≠"
+            "approx" -> "≈"
+            "plus_minus" -> "±"
+            "delta" -> "△"
+            "omega" -> "Ω"
+            "atom" -> "⚛️"
+            "magnet" -> "🧲"
+            "dna" -> "🧬"
+            "compass" -> "🧭"
+            "ruler" -> "📏"
+            "gear" -> "⚙️"
+            "clipboard" -> "📋"
+            "calendar" -> "📅"
+            "bar_chart" -> "📊"
+            "trend_up" -> "📈"
+            "trend_down" -> "📉"
+            "lock" -> "🔒"
+            "key" -> "🔑"
+            "mail" -> "✉️"
+            "megaphone" -> "📢"
+            "memo" -> "📝"
+            "folder" -> "📁"
+            "timer" -> "⏱️"
+            "flag" -> "🚩"
+            "shield" -> "🛡️"
+            "globe" -> "🌐"
+            "chat" -> "💬"
+            else -> "🏷️"
         }
     }
 
@@ -1088,6 +1234,66 @@ object CanvasRenderer {
         }
     }
 
+    private fun drawImage(drawScope: DrawScope, img: CanvasElement.Image) {
+        val uriStr = img.uriString
+        val cached = imageCache[uriStr]
+
+        if (cached != null) {
+            drawScope.drawImage(
+                image = cached,
+                dstOffset = androidx.compose.ui.unit.IntOffset(img.x.toInt(), img.y.toInt()),
+                dstSize = androidx.compose.ui.unit.IntSize(img.width.toInt(), img.height.toInt())
+            )
+        } else {
+            // Draw placeholder frame
+            drawScope.drawRoundRect(
+                color = Color(0x332196F3),
+                topLeft = Offset(img.x, img.y),
+                size = Size(img.width, img.height),
+                cornerRadius = CornerRadius(12f, 12f),
+                style = Fill
+            )
+            drawScope.drawRoundRect(
+                color = Color(0xFF2196F3),
+                topLeft = Offset(img.x, img.y),
+                size = Size(img.width, img.height),
+                cornerRadius = CornerRadius(12f, 12f),
+                style = Stroke(width = 2f)
+            )
+
+            // Asynchronously load bitmap into cache
+            if (!loadingUris.contains(uriStr)) {
+                loadingUris.add(uriStr)
+                Thread {
+                    try {
+                        var bitmap: android.graphics.Bitmap? = null
+                        if (uriStr.startsWith("http://") || uriStr.startsWith("https://")) {
+                            val conn = URL(uriStr).openConnection()
+                            conn.connectTimeout = 8000
+                            conn.readTimeout = 8000
+                            val input = conn.getInputStream()
+                            bitmap = BitmapFactory.decodeStream(input)
+                            input.close()
+                        } else {
+                            val uri = android.net.Uri.parse(uriStr)
+                            val path = uri.path
+                            if (path != null && java.io.File(path).exists()) {
+                                bitmap = BitmapFactory.decodeFile(path)
+                            }
+                        }
+                        if (bitmap != null) {
+                            imageCache[uriStr] = bitmap.asImageBitmap()
+                        }
+                    } catch (e: Exception) {
+                        android.util.Log.e("CanvasRenderer", "Failed to load image: $uriStr", e)
+                    } finally {
+                        loadingUris.remove(uriStr)
+                    }
+                }.start()
+            }
+        }
+    }
+
     fun drawLaserTrail(drawScope: DrawScope, points: List<LaserPoint>, laserColor: Color, laserSize: Float) {
         if (points.isEmpty()) return
         val now = System.currentTimeMillis()
@@ -1117,6 +1323,51 @@ object CanvasRenderer {
                 )
             }
         }
+    }
+
+    fun drawEraserCursor(drawScope: DrawScope, center: Offset, radius: Float, isDarkBg: Boolean) {
+        // Soft outer shadow/glow
+        drawScope.drawCircle(
+            color = Color(0x33000000),
+            radius = radius + 2f,
+            center = center,
+            style = Stroke(width = 3f)
+        )
+        // Translucent background fill
+        drawScope.drawCircle(
+            color = if (isDarkBg) Color.White.copy(alpha = 0.22f) else Color(0xFFFF5252).copy(alpha = 0.18f),
+            radius = radius,
+            center = center,
+            style = Fill
+        )
+        // Outer crisp white/dark border
+        drawScope.drawCircle(
+            color = if (isDarkBg) Color.White else Color(0xFF222222),
+            radius = radius,
+            center = center,
+            style = Stroke(width = 2.5f)
+        )
+        // Inner indicator ring
+        drawScope.drawCircle(
+            color = Color(0xFFFF1744),
+            radius = (radius - 3f).coerceAtLeast(2f),
+            center = center,
+            style = Stroke(width = 1.5f)
+        )
+        // Center precision crosshair
+        val cross = (radius * 0.35f).coerceIn(4f, 12f)
+        drawScope.drawLine(
+            color = if (isDarkBg) Color.White else Color(0xFFFF1744),
+            start = Offset(center.x - cross, center.y),
+            end = Offset(center.x + cross, center.y),
+            strokeWidth = 2f
+        )
+        drawScope.drawLine(
+            color = if (isDarkBg) Color.White else Color(0xFFFF1744),
+            start = Offset(center.x, center.y - cross),
+            end = Offset(center.x, center.y + cross),
+            strokeWidth = 2f
+        )
     }
 }
 

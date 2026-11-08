@@ -28,8 +28,10 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import com.example.data.local.BoardEntity
 import com.example.data.repository.BoardRepository
+import com.example.ui.ads.BannerAdView
 import com.example.ui.ads.RewardedAdManager
 import com.example.ui.history.HistoryDialog
+import com.example.ui.policy.PrivacyPolicyDialog
 import kotlinx.coroutines.launch
 
 @Composable
@@ -52,6 +54,7 @@ fun HomeScreen(
     var showRemoveAdsDialog by remember { mutableStateOf(false) }
     var showSettingsDialog by remember { mutableStateOf(false) }
     var showRewardedAdDialog by remember { mutableStateOf(false) }
+    var showPrivacyPolicyDialog by remember { mutableStateOf(false) }
     var rewardEarnedMessage by remember { mutableStateOf<String?>(null) }
 
     Box(
@@ -84,7 +87,7 @@ fun HomeScreen(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
-            // "WhiteBoard" Title (matches screenshot 1)
+            // "WhiteBoard" Title
             Text(
                 text = "WhiteBoard",
                 color = Color.White,
@@ -92,8 +95,16 @@ fun HomeScreen(
                 fontWeight = FontWeight.Bold,
                 letterSpacing = 0.5.sp
             )
+            Spacer(Modifier.height(4.dp))
+            Text(
+                text = "Developer: Saiyed Afak Ahmed (JavaGoat)",
+                color = Color(0xFF64B5F6),
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Medium,
+                letterSpacing = 0.2.sp
+            )
 
-            Spacer(Modifier.height(56.dp))
+            Spacer(Modifier.height(48.dp))
 
             // "+ New Board" Button (matches screenshot 1)
             Button(
@@ -309,6 +320,35 @@ fun HomeScreen(
                     fontWeight = FontWeight.Medium
                 )
             }
+
+            Spacer(Modifier.height(16.dp))
+
+            // Privacy Policy Link
+            Row(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(12.dp))
+                    .clickable { showPrivacyPolicyDialog = true }
+                    .padding(horizontal = 14.dp, vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Security,
+                    contentDescription = null,
+                    tint = Color(0xFF757575),
+                    modifier = Modifier.size(14.dp)
+                )
+                Spacer(Modifier.width(6.dp))
+                Text(
+                    text = "Privacy Policy",
+                    color = Color(0xFFAAAAAA),
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Normal,
+                    textDecoration = androidx.compose.ui.text.style.TextDecoration.Underline
+                )
+            }
+
+            Spacer(Modifier.height(16.dp))
+            BannerAdView(modifier = Modifier.padding(horizontal = 16.dp))
         }
     }
 
@@ -525,6 +565,22 @@ fun HomeScreen(
 
                     Spacer(Modifier.height(16.dp))
 
+                    Text("Legal & Compliance", color = Color.White, fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
+                    Spacer(Modifier.height(6.dp))
+                    OutlinedButton(
+                        onClick = {
+                            showPrivacyPolicyDialog = true
+                        },
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFF64B5F6)),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(Icons.Default.Security, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text("Privacy Policy")
+                    }
+
+                    Spacer(Modifier.height(16.dp))
+
                     Button(
                         onClick = { showSettingsDialog = false },
                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2F80ED)),
@@ -673,5 +729,12 @@ fun HomeScreen(
                 }
             }
         }
+    }
+
+    // In-App Privacy Policy Dialog (Google Play Compliance)
+    if (showPrivacyPolicyDialog) {
+        PrivacyPolicyDialog(
+            onDismiss = { showPrivacyPolicyDialog = false }
+        )
     }
 }

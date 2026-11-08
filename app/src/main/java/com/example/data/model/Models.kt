@@ -66,6 +66,7 @@ enum class ShapeType(val label: String, val is3D: Boolean = false) {
     SEMICIRCLE("Semicircle"),
     SECTOR("Sector"),
     RIGHT_ANGLE("Right ∠"),
+    CLOUD("Cloud"),
     // 3D Shapes
     CUBE("Cube", true),
     CYLINDER("Cylinder", true),
@@ -165,6 +166,7 @@ sealed class CanvasElement {
         val colorArgb: Int,
         val strokeWidth: Float,
         val isFilled: Boolean = false,
+        val fillColorArgb: Int? = null,
         override val rotation: Float = 0f,
         override val scale: Float = 1f
     ) : CanvasElement() {
@@ -174,13 +176,48 @@ sealed class CanvasElement {
             val top = min(startY, endY)
             val bottom = max(startY, endY)
             val pad = strokeWidth * scale / 2f + 4f
+            if (shapeType == ShapeType.SQUARE) {
+                val side = max(right - left, bottom - top)
+                return Rect(left - pad, top - pad, left + side + pad, top + side + pad)
+            }
+            if (shapeType == ShapeType.CIRCLE) {
+                val diam = max(right - left, bottom - top)
+                return Rect(left - pad, top - pad, left + diam + pad, top + diam + pad)
+            }
             return Rect(left - pad, top - pad, right + pad, bottom + pad)
         }
 
-        override fun getCenter(): PointF = PointF((startX + endX) / 2f, (startY + endY) / 2f)
+        override fun getCenter(): PointF {
+            val left = min(startX, endX)
+            val right = max(startX, endX)
+            val top = min(startY, endY)
+            val bottom = max(startY, endY)
+            if (shapeType == ShapeType.SQUARE || shapeType == ShapeType.CIRCLE) {
+                val side = max(right - left, bottom - top)
+                return PointF(left + side / 2f, top + side / 2f)
+            }
+            return PointF((startX + endX) / 2f, (startY + endY) / 2f)
+        }
 
         override fun withTranslation(dx: Float, dy: Float): CanvasElement =
             copy(startX = startX + dx, startY = startY + dy, endX = endX + dx, endY = endY + dy)
+
+        fun withBoundsAdjustment(dLeft: Float, dTop: Float, dRight: Float, dBottom: Float): Shape {
+            val minX = min(startX, endX)
+            val maxX = max(startX, endX)
+            val minY = min(startY, endY)
+            val maxY = max(startY, endY)
+            val newLeft = minOf(minX + dLeft, maxX + dRight - 20f)
+            val newRight = maxOf(maxX + dRight, minX + dLeft + 20f)
+            val newTop = minOf(minY + dTop, maxY + dBottom - 20f)
+            val newBottom = maxOf(maxY + dBottom, minY + dTop + 20f)
+            return copy(
+                startX = newLeft,
+                startY = newTop,
+                endX = newRight,
+                endY = newBottom
+            )
+        }
 
         override fun withRotation(newRotation: Float): CanvasElement = copy(rotation = newRotation)
         override fun withScale(newScale: Float): CanvasElement = copy(scale = newScale.coerceIn(0.2f, 8f))
@@ -338,6 +375,10 @@ sealed class CanvasElement {
         override fun getCenter(): PointF = PointF(x + width / 2f, y + height / 2f)
 
         override fun withTranslation(dx: Float, dy: Float): CanvasElement = copy(x = x + dx, y = y + dy)
+
+        fun withSizeAdjustment(dWidth: Float, dHeight: Float): Image =
+            copy(width = max(50f, width + dWidth), height = max(50f, height + dHeight))
+
         override fun withRotation(newRotation: Float): CanvasElement = copy(rotation = newRotation)
         override fun withScale(newScale: Float): CanvasElement = copy(scale = newScale.coerceIn(0.2f, 8f))
         override fun duplicate(newId: String): CanvasElement = copy(id = newId).withTranslation(40f, 40f)

@@ -30,6 +30,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import com.example.data.model.*
+import com.example.ui.ads.BannerAdView
 
 val DEFAULT_COLORS = listOf(
     Color(0xFF000000), // Black
@@ -824,27 +825,95 @@ fun FormulaDialog(
     var formula by remember { mutableStateOf("") }
     var selectedColor by remember { mutableStateOf(Color.Black) }
     var fontSize by remember { mutableStateOf(40f) }
+    var selectedCategoryTab by remember { mutableStateOf(0) }
 
-    val quickInserts = listOf("a/b", "√x", "x²", "xₙ", "∫", "∑", "()", "=")
+    val categoryTabs = listOf("Algebra & Real", "Geometry & Trig", "Mensuration", "Physics & Chem")
+
+    val algebraFormulas = listOf(
+        "Euclid: a = bq + r (0 ≤ r < b)",
+        "Quadratic: x = (-b ± √(b² - 4ac)) / (2a)",
+        "Discriminant: D = b² - 4ac",
+        "Polynomial: α + β = -b/a, αβ = c/a",
+        "Cubic: α + β + γ = -b/a, αβ + βγ + γα = c/a",
+        "AP n-th Term: aₙ = a + (n - 1)d",
+        "AP Sum: Sₙ = (n/2)[2a + (n - 1)d]",
+        "AP Sum Alt: Sₙ = (n/2)(a + l)",
+        "(a + b)² = a² + 2ab + b²",
+        "(a - b)² = a² - 2ab + b²",
+        "a² - b² = (a - b)(a + b)",
+        "(a + b + c)² = a² + b² + c² + 2ab + 2bc + 2ca"
+    )
+
+    val geometryTrigFormulas = listOf(
+        "Pythagoras: AB² + BC² = AC²",
+        "Distance: d = √[(x₂ - x₁)² + (y₂ - y₁)²]",
+        "Section: ((m₁x₂ + m₂x₁)/(m₁+m₂), (m₁y₂ + m₂y₁)/(m₁+m₂))",
+        "Midpoint: ((x₁ + x₂)/2, (y₁ + y₂)/2)",
+        "Triangle Area: ½|x₁(y₂ - y₃) + x₂(y₃ - y₁) + x₃(y₁ - y₂)|",
+        "sin θ = Opp/Hyp, cos θ = Adj/Hyp",
+        "tan θ = Opp/Adj = sin θ / cos θ",
+        "sin² θ + cos² θ = 1",
+        "1 + tan² θ = sec² θ",
+        "1 + cot² θ = cosec² θ",
+        "sin(90° - θ) = cos θ, tan(90° - θ) = cot θ",
+        "sec(90° - θ) = cosec θ"
+    )
+
+    val mensurationFormulas = listOf(
+        "Circle Area: A = πr², Circumference = 2πr",
+        "Sector Area: A = (θ / 360°) × πr²",
+        "Arc Length: l = (θ / 360°) × 2πr",
+        "Cylinder Vol: V = πr²h, CSA = 2πrh, TSA = 2πr(r + h)",
+        "Cone Vol: V = ⅓πr²h, Slant Height l = √(r² + h²)",
+        "Cone CSA = πrl, TSA = πr(r + l)",
+        "Sphere Vol: V = ⁴⁄₃πr³, Surface Area = 4πr²",
+        "Hemisphere Vol: V = ⅔πr³, CSA = 2πr², TSA = 3πr²",
+        "Frustum Vol: V = ⅓πh(r₁² + r₂² + r₁r₂)",
+        "Frustum CSA: πl(r₁ + r₂), l = √[h² + (r₁ - r₂)²]",
+        "Mean: x̄ = Σfᵢxᵢ / Σfᵢ",
+        "Mode = l + [(f₁ - f₀) / (2f₁ - f₀ - f₂)] × h"
+    )
+
+    val physicsChemFormulas = listOf(
+        "Ohm's Law: V = I × R",
+        "Resistance: R = ρ(L / A)",
+        "Series R: Rₑ = R₁ + R₂ + R₃",
+        "Parallel R: 1/Rₑ = 1/R₁ + 1/R₂ + 1/R₃",
+        "Joule's Heating: H = I²Rt = VIt = (V²/R)t",
+        "Electric Power: P = VI = I²R = V²/R",
+        "Mirror Formula: 1/f = 1/v + 1/u",
+        "Lens Formula: 1/f = 1/v - 1/u",
+        "Magnification: m = -v/u = hᵢ/hₒ",
+        "Power of Lens: P = 1 / f(in meters)",
+        "Snell's Law: n = sin i / sin r",
+        "Refractive Index: n₂₁ = v₁ / v₂"
+    )
+
+    val currentFormulas = when (selectedCategoryTab) {
+        0 -> algebraFormulas
+        1 -> geometryTrigFormulas
+        2 -> mensurationFormulas
+        else -> physicsChemFormulas
+    }
 
     Dialog(onDismissRequest = onDismiss) {
         Card(
             shape = RoundedCornerShape(20.dp),
             colors = CardDefaults.cardColors(containerColor = Color.White),
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp)
+            modifier = Modifier.fillMaxWidth().heightIn(max = 580.dp).padding(horizontal = 8.dp)
         ) {
             Column(
-                modifier = Modifier.padding(20.dp)
+                modifier = Modifier.padding(18.dp)
             ) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    IconButton(onClick = onDismiss) {
+                    IconButton(onClick = onDismiss, modifier = Modifier.size(28.dp)) {
                         Icon(Icons.Default.Close, contentDescription = "Close", tint = Color.Gray)
                     }
-                    Text("Math Formula", fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                    Text("Class 10 Formulas", fontSize = 18.sp, fontWeight = FontWeight.Bold)
                     Button(
                         onClick = {
                             if (formula.isNotBlank()) {
@@ -854,131 +923,128 @@ fun FormulaDialog(
                         },
                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2196F3))
                     ) {
-                        Text("Add")
+                        Text("Insert")
                     }
                 }
 
-                Spacer(Modifier.height(12.dp))
+                Spacer(Modifier.height(10.dp))
 
                 // Preview Card
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(90.dp)
+                        .height(76.dp)
                         .clip(RoundedCornerShape(12.dp))
                         .background(Color(0xFFF8F9FA))
                         .border(1.dp, Color(0xFFE0E0E0), RoundedCornerShape(12.dp)),
                     contentAlignment = Alignment.Center
                 ) {
                     if (formula.isBlank()) {
-                        Text("Preview will appear here", color = Color.Gray, fontSize = 14.sp)
+                        Text("Tap any formula below or type custom formula", color = Color.Gray, fontSize = 13.sp)
                     } else {
                         Text(
                             text = formula,
                             color = selectedColor,
-                            fontSize = (fontSize * 0.6f).sp,
-                            fontWeight = FontWeight.Bold
+                            fontSize = (fontSize * 0.55f).sp,
+                            fontWeight = FontWeight.Bold,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.padding(horizontal = 8.dp)
                         )
                     }
                 }
 
-                Spacer(Modifier.height(12.dp))
+                Spacer(Modifier.height(10.dp))
 
                 OutlinedTextField(
                     value = formula,
                     onValueChange = { formula = it },
-                    label = { Text("Formula") },
+                    label = { Text("Formula Text") },
                     modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
                     shape = RoundedCornerShape(10.dp)
                 )
 
-                Spacer(Modifier.height(12.dp))
-                Text("Color", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = Color.Gray)
-                Spacer(Modifier.height(6.dp))
+                Spacer(Modifier.height(10.dp))
 
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween
+                // Formula Categories
+                ScrollableTabRow(
+                    selectedTabIndex = selectedCategoryTab,
+                    edgePadding = 0.dp,
+                    containerColor = Color.Transparent,
+                    indicator = {},
+                    divider = {}
                 ) {
-                    DEFAULT_COLORS.forEach { color ->
-                        val isSelected = selectedColor.toArgb() == color.toArgb()
+                    categoryTabs.forEachIndexed { idx, title ->
+                        val isSel = selectedCategoryTab == idx
                         Box(
                             modifier = Modifier
-                                .size(28.dp)
-                                .clip(CircleShape)
-                                .background(color)
-                                .border(
-                                    width = if (isSelected) 2.5.dp else 1.dp,
-                                    color = if (isSelected) Color(0xFF2196F3) else Color(0xFFDDDDDD),
-                                    shape = CircleShape
-                                )
-                                .clickable { selectedColor = color }
-                        )
-                    }
-                }
-
-                Spacer(Modifier.height(12.dp))
-                Text("Font Size: ${fontSize.toInt()}", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF2196F3))
-                Slider(
-                    value = fontSize,
-                    onValueChange = { fontSize = it },
-                    valueRange = 24f..80f,
-                    colors = SliderDefaults.colors(
-                        thumbColor = Color(0xFF2196F3),
-                        activeTrackColor = Color(0xFF2196F3)
-                    )
-                )
-
-                Spacer(Modifier.height(8.dp))
-                Text("Quick Insert", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = Color.Gray)
-                Spacer(Modifier.height(6.dp))
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    quickInserts.take(4).forEach { sym ->
-                        Box(
-                            modifier = Modifier
-                                .weight(1f)
-                                .padding(2.dp)
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(Color(0xFFF1F3F4))
-                                .clickable {
-                                    val insertion = when (sym) {
-                                        "a/b" -> "(a/b)"
-                                        "√x" -> "√(x)"
-                                        "x²" -> "x²"
-                                        "xₙ" -> "xₙ"
-                                        else -> sym
-                                    }
-                                    formula += insertion
-                                }
-                                .padding(vertical = 10.dp),
-                            contentAlignment = Alignment.Center
+                                .padding(horizontal = 3.dp)
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(if (isSel) Color(0xFFE3F2FD) else Color(0xFFF5F5F5))
+                                .clickable { selectedCategoryTab = idx }
+                                .padding(horizontal = 10.dp, vertical = 6.dp)
                         ) {
-                            Text(sym, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                            Text(
+                                title,
+                                fontSize = 11.sp,
+                                fontWeight = if (isSel) FontWeight.Bold else FontWeight.Medium,
+                                color = if (isSel) Color(0xFF1976D2) else Color.DarkGray
+                            )
                         }
                     }
                 }
+
+                Spacer(Modifier.height(8.dp))
+
+                // Formula List Grid
+                LazyVerticalGrid(
+                    columns = GridCells.Fixed(1),
+                    modifier = Modifier.weight(1f)
+                ) {
+                    items(currentFormulas) { item ->
+                        Surface(
+                            modifier = Modifier
+                                .padding(vertical = 3.dp)
+                                .fillMaxWidth()
+                                .clickable { formula = item },
+                            shape = RoundedCornerShape(8.dp),
+                            color = Color(0xFFF8FAFC),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFE2E8F0))
+                        ) {
+                            Text(
+                                text = item,
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = Color(0xFF1E293B),
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp)
+                            )
+                        }
+                    }
+                }
+
+                Spacer(Modifier.height(8.dp))
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    quickInserts.drop(4).forEach { sym ->
-                        Box(
-                            modifier = Modifier
-                                .weight(1f)
-                                .padding(2.dp)
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(Color(0xFFF1F3F4))
-                                .clickable {
-                                    formula += sym
-                                }
-                                .padding(vertical = 10.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(sym, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                    Text("Color", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = Color.Gray)
+                    Row {
+                        DEFAULT_COLORS.take(6).forEach { color ->
+                            val isSelected = selectedColor.toArgb() == color.toArgb()
+                            Box(
+                                modifier = Modifier
+                                    .padding(horizontal = 3.dp)
+                                    .size(24.dp)
+                                    .clip(CircleShape)
+                                    .background(color)
+                                    .border(
+                                        width = if (isSelected) 2.5.dp else 1.dp,
+                                        color = if (isSelected) Color(0xFF2196F3) else Color(0xFFDDDDDD),
+                                        shape = CircleShape
+                                    )
+                                    .clickable { selectedColor = color }
+                            )
                         }
                     }
                 }
@@ -1161,35 +1227,126 @@ fun StickersDialog(
     onDismiss: () -> Unit
 ) {
     var selectedTab by remember { mutableStateOf(0) }
-    val tabs = listOf("Teaching Rewards", "Feedback Stamps", "Math Symbols")
+    val tabs = listOf("Teaching", "Stamps", "Reactions", "Math & Sci", "Office")
 
     val teachingStickers = listOf(
-        "star" to "Star",
-        "trophy" to "Trophy",
-        "medal" to "Medal",
-        "crown" to "Crown",
-        "a_plus" to "A+ Grade",
-        "hundred" to "100%",
-        "thumbs_up" to "Thumbs Up",
-        "excellent" to "Excellent!",
-        "good_job" to "Good Job!"
+        Triple("star", "Star", "⭐"),
+        Triple("trophy", "Trophy", "🏆"),
+        Triple("medal", "Gold Medal", "🥇"),
+        Triple("silver_medal", "Silver Medal", "🥈"),
+        Triple("bronze_medal", "Bronze Medal", "🥉"),
+        Triple("crown", "Crown", "👑"),
+        Triple("a_plus", "A+ Grade", "🅰️"),
+        Triple("hundred", "100%", "💯"),
+        Triple("thumbs_up", "Thumbs Up", "👍"),
+        Triple("excellent", "Excellent!", "🌟"),
+        Triple("good_job", "Good Job!", "👏"),
+        Triple("target", "Bullseye", "🎯"),
+        Triple("grad_cap", "Graduate", "🎓"),
+        Triple("books", "Books", "📚"),
+        Triple("microscope", "Microscope", "🔬"),
+        Triple("test_tube", "Science", "🧪")
     )
+
+    val feedbackStamps = listOf(
+        Triple("verified", "Verified", "✅"),
+        Triple("needs_work", "Needs Work", "⚠️"),
+        Triple("pin", "Important", "📌"),
+        Triple("priority", "Urgent", "🚨"),
+        Triple("question", "Question?", "❓"),
+        Triple("idea", "Idea", "💡"),
+        Triple("perfect", "Perfect", "💎"),
+        Triple("well_done", "Well Done", "🎉"),
+        Triple("star_student", "Top Effort", "🏅"),
+        Triple("keep_going", "Keep Going", "🚀"),
+        Triple("great_effort", "High Five", "🙌"),
+        Triple("reviewed", "Inspected", "🔍"),
+        Triple("rejected", "Needs Revision", "❌"),
+        Triple("favorite", "Favorite", "❤️"),
+        Triple("alarm", "Deadline", "⏰"),
+        Triple("award", "Recognition", "🎖️")
+    )
+
+    val reactionStickers = listOf(
+        Triple("smile", "Grinning", "😀"),
+        Triple("heart_eyes", "In Love", "😍"),
+        Triple("party", "Party", "🥳"),
+        Triple("thinking", "Thinking", "🤔"),
+        Triple("cool", "Cool", "😎"),
+        Triple("mind_blown", "Shocked", "🤯"),
+        Triple("rocket", "Rocket", "🚀"),
+        Triple("fire", "Fire", "🔥"),
+        Triple("sparkles", "Sparkles", "✨"),
+        Triple("rainbow", "Rainbow", "🌈"),
+        Triple("lightning", "Energy", "⚡"),
+        Triple("coffee", "Coffee", "☕"),
+        Triple("clap", "Applause", "👏"),
+        Triple("bulb", "Inspiration", "💡"),
+        Triple("heart", "Love", "❤️"),
+        Triple("gem", "Gem", "💎")
+    )
+
+    val mathSciStickers = listOf(
+        Triple("pi", "Pi", "π"),
+        Triple("sum", "Sigma", "∑"),
+        Triple("integral", "Integral", "∫"),
+        Triple("sqrt", "Square Root", "√"),
+        Triple("infinity", "Infinity", "∞"),
+        Triple("not_equal", "Not Equal", "≠"),
+        Triple("approx", "Approx", "≈"),
+        Triple("plus_minus", "Plus Minus", "±"),
+        Triple("delta", "Delta", "△"),
+        Triple("omega", "Omega", "Ω"),
+        Triple("atom", "Atom", "⚛️"),
+        Triple("magnet", "Magnet", "🧲"),
+        Triple("dna", "Genetics", "🧬"),
+        Triple("compass", "Geometry", "🧭"),
+        Triple("ruler", "Measurement", "📏"),
+        Triple("gear", "Mechanics", "⚙️")
+    )
+
+    val officeStickers = listOf(
+        Triple("clipboard", "Tasks", "📋"),
+        Triple("calendar", "Schedule", "📅"),
+        Triple("bar_chart", "Analytics", "📊"),
+        Triple("trend_up", "Growth", "📈"),
+        Triple("trend_down", "Decline", "📉"),
+        Triple("lock", "Private", "🔒"),
+        Triple("key", "Solution", "🔑"),
+        Triple("mail", "Notice", "✉️"),
+        Triple("megaphone", "Broadcast", "📢"),
+        Triple("memo", "Notes", "📝"),
+        Triple("folder", "Archive", "📁"),
+        Triple("timer", "Stopwatch", "⏱️"),
+        Triple("flag", "Milestone", "🚩"),
+        Triple("shield", "Protected", "🛡️"),
+        Triple("globe", "Global", "🌐"),
+        Triple("chat", "Discussion", "💬")
+    )
+
+    val currentStickers = when (selectedTab) {
+        0 -> teachingStickers
+        1 -> feedbackStamps
+        2 -> reactionStickers
+        3 -> mathSciStickers
+        else -> officeStickers
+    }
 
     Dialog(onDismissRequest = onDismiss) {
         Card(
             shape = RoundedCornerShape(20.dp),
             colors = CardDefaults.cardColors(containerColor = Color.White),
-            modifier = Modifier.fillMaxWidth().heightIn(max = 520.dp).padding(horizontal = 8.dp)
+            modifier = Modifier.fillMaxWidth().heightIn(max = 540.dp).padding(horizontal = 8.dp)
         ) {
             Column(
-                modifier = Modifier.padding(20.dp)
+                modifier = Modifier.padding(18.dp)
             ) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text("Stickers", fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                    Text("Sticker Library", fontSize = 20.sp, fontWeight = FontWeight.Bold)
                     IconButton(onClick = onDismiss, modifier = Modifier.size(32.dp)) {
                         Icon(Icons.Default.Close, contentDescription = "Close", tint = Color.Gray)
                     }
@@ -1208,58 +1365,52 @@ fun StickersDialog(
                         val isSelected = selectedTab == index
                         Box(
                             modifier = Modifier
-                                .padding(horizontal = 4.dp)
-                                .clip(RoundedCornerShape(16.dp))
+                                .padding(horizontal = 3.dp)
+                                .clip(RoundedCornerShape(14.dp))
                                 .background(if (isSelected) Color(0xFFE3F2FD) else Color(0xFFF5F5F5))
                                 .clickable { selectedTab = index }
-                                .padding(horizontal = 14.dp, vertical = 8.dp)
+                                .padding(horizontal = 12.dp, vertical = 7.dp)
                         ) {
                             Text(
                                 text = title,
                                 fontSize = 12.sp,
                                 fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                                color = if (isSelected) Color(0xFF2196F3) else Color.DarkGray
+                                color = if (isSelected) Color(0xFF1976D2) else Color.DarkGray
                             )
                         }
                     }
                 }
 
-                Spacer(Modifier.height(16.dp))
+                Spacer(Modifier.height(14.dp))
 
                 LazyVerticalGrid(
-                    columns = GridCells.Fixed(3),
+                    columns = GridCells.Fixed(4),
                     modifier = Modifier.weight(1f)
                 ) {
-                    items(teachingStickers) { (id, title) ->
+                    items(currentStickers) { (id, title, icon) ->
                         Card(
                             shape = RoundedCornerShape(12.dp),
-                            colors = CardDefaults.cardColors(containerColor = Color(0xFFF9F9F9)),
+                            colors = CardDefaults.cardColors(containerColor = Color(0xFFF9FAFB)),
                             modifier = Modifier
-                                .padding(6.dp)
+                                .padding(4.dp)
                                 .clickable {
                                     onStickerSelected(id, title)
                                     onDismiss()
                                 }
                         ) {
                             Column(
-                                modifier = Modifier.padding(12.dp),
+                                modifier = Modifier.padding(8.dp),
                                 horizontalAlignment = Alignment.CenterHorizontally
                             ) {
-                                val icon = when (id) {
-                                    "star" -> "⭐"
-                                    "trophy" -> "🏆"
-                                    "medal" -> "🥇"
-                                    "crown" -> "👑"
-                                    "a_plus" -> "A+"
-                                    "hundred" -> "💯"
-                                    "thumbs_up" -> "👍"
-                                    "excellent" -> "🌟"
-                                    "good_job" -> "👏"
-                                    else -> "🏷️"
-                                }
-                                Text(icon, fontSize = 32.sp)
-                                Spacer(Modifier.height(6.dp))
-                                Text(title, fontSize = 11.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                                Text(icon, fontSize = 28.sp)
+                                Spacer(Modifier.height(4.dp))
+                                Text(
+                                    title,
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    color = Color.DarkGray,
+                                    maxLines = 1
+                                )
                             }
                         }
                     }
@@ -1661,3 +1812,322 @@ fun CustomColorPickerDialog(
         }
     }
 }
+
+// 18. WEB IMAGE DIALOG
+@Composable
+fun WebImageDialog(
+    onUrlConfirmed: (String) -> Unit,
+    onDismiss: () -> Unit
+) {
+    var urlText by remember { mutableStateOf("") }
+    val presets = listOf(
+        "World Map" to "https://images.unsplash.com/photo-1524661135-423995f22d0b?w=600&auto=format&fit=crop&q=80",
+        "Graph Paper" to "https://images.unsplash.com/photo-1606326608606-aa0b62935f2b?w=600&auto=format&fit=crop&q=80",
+        "Solar System" to "https://images.unsplash.com/photo-1614728894747-a83421e2b9c9?w=600&auto=format&fit=crop&q=80",
+        "Notebook Lines" to "https://images.unsplash.com/photo-1586075010923-2dd4570fb338?w=600&auto=format&fit=crop&q=80"
+    )
+
+    Dialog(onDismissRequest = onDismiss) {
+        Card(
+            shape = RoundedCornerShape(20.dp),
+            colors = CardDefaults.cardColors(containerColor = Color.White),
+            modifier = Modifier.fillMaxWidth().padding(12.dp)
+        ) {
+            Column(modifier = Modifier.padding(20.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("Import Web Image", fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                    IconButton(onClick = onDismiss, modifier = Modifier.size(28.dp)) {
+                        Icon(Icons.Default.Close, contentDescription = "Close", tint = Color.Gray)
+                    }
+                }
+
+                Spacer(Modifier.height(14.dp))
+                OutlinedTextField(
+                    value = urlText,
+                    onValueChange = { urlText = it },
+                    placeholder = { Text("https://example.com/image.png") },
+                    label = { Text("Image URL") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    shape = RoundedCornerShape(12.dp)
+                )
+
+                Spacer(Modifier.height(14.dp))
+                Text("Quick Educational Presets:", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = Color.Gray)
+                Spacer(Modifier.height(8.dp))
+                LazyVerticalGrid(
+                    columns = GridCells.Fixed(2),
+                    modifier = Modifier.height(110.dp)
+                ) {
+                    items(presets) { (title, url) ->
+                        Button(
+                            onClick = {
+                                onUrlConfirmed(url)
+                                onDismiss()
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFF1F5F9)),
+                            modifier = Modifier.padding(4.dp),
+                            shape = RoundedCornerShape(10.dp)
+                        ) {
+                            Text(title, fontSize = 12.sp, color = Color(0xFF1E293B), maxLines = 1)
+                        }
+                    }
+                }
+
+                Spacer(Modifier.height(16.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End
+                ) {
+                    TextButton(onClick = onDismiss) { Text("Cancel") }
+                    Spacer(Modifier.width(8.dp))
+                    Button(
+                        onClick = {
+                            if (urlText.isNotBlank()) {
+                                onUrlConfirmed(urlText.trim())
+                                onDismiss()
+                            }
+                        },
+                        enabled = urlText.isNotBlank(),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2196F3))
+                    ) {
+                        Text("Insert Image")
+                    }
+                }
+            }
+        }
+    }
+}
+
+// 19. OCR DIALOG
+@Composable
+fun OcrDialog(
+    extractedText: String,
+    isProcessing: Boolean,
+    onScanGallery: () -> Unit,
+    onScanCamera: () -> Unit,
+    onInsertText: (String) -> Unit,
+    onDismiss: () -> Unit
+) {
+    var editableText by remember(extractedText) { mutableStateOf(extractedText) }
+
+    Dialog(onDismissRequest = onDismiss) {
+        Card(
+            shape = RoundedCornerShape(20.dp),
+            colors = CardDefaults.cardColors(containerColor = Color.White),
+            modifier = Modifier.fillMaxWidth().heightIn(max = 560.dp).padding(12.dp)
+        ) {
+            Column(modifier = Modifier.padding(20.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.DocumentScanner, contentDescription = null, tint = Color(0xFF2563EB))
+                        Spacer(Modifier.width(8.dp))
+                        Text("Optical Recognition (OCR)", fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                    }
+                    IconButton(onClick = onDismiss, modifier = Modifier.size(28.dp)) {
+                        Icon(Icons.Default.Close, contentDescription = "Close", tint = Color.Gray)
+                    }
+                }
+
+                Spacer(Modifier.height(8.dp))
+                Surface(
+                    color = Color(0xFFFFF3E0),
+                    shape = RoundedCornerShape(8.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(Icons.Default.CardGiftcard, contentDescription = null, tint = Color(0xFFE65100), modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text(
+                            text = "🎁 Rewarded OCR: Watch test ad (ca-app-pub-3940256099942544/5224354917) to scan text",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = Color(0xFFE65100)
+                        )
+                    }
+                }
+
+                Spacer(Modifier.height(12.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Button(
+                        onClick = onScanGallery,
+                        modifier = Modifier.weight(1f),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE0F2FE)),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Icon(Icons.Default.Image, contentDescription = null, tint = Color(0xFF0284C7), modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text("Pick Image", color = Color(0xFF0284C7), fontSize = 12.sp)
+                    }
+                    Button(
+                        onClick = onScanCamera,
+                        modifier = Modifier.weight(1f),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE0F2FE)),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Icon(Icons.Default.PhotoCamera, contentDescription = null, tint = Color(0xFF0284C7), modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text("Take Photo", color = Color(0xFF0284C7), fontSize = 12.sp)
+                    }
+                }
+
+                Spacer(Modifier.height(16.dp))
+                if (isProcessing) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(180.dp)
+                            .background(Color(0xFFF8FAFC), RoundedCornerShape(12.dp)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            CircularProgressIndicator(color = Color(0xFF2563EB))
+                            Spacer(Modifier.height(10.dp))
+                            Text("Recognizing text via ML Kit...", fontSize = 13.sp, color = Color.Gray)
+                        }
+                    }
+                } else {
+                    OutlinedTextField(
+                        value = editableText,
+                        onValueChange = { editableText = it },
+                        placeholder = { Text("Extracted text will appear here. You can also edit it before inserting into the canvas.") },
+                        label = { Text("Recognized Text") },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(190.dp),
+                        shape = RoundedCornerShape(12.dp)
+                    )
+                }
+
+                Spacer(Modifier.height(10.dp))
+                BannerAdView()
+                Spacer(Modifier.height(12.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End
+                ) {
+                    TextButton(onClick = onDismiss) { Text("Close") }
+                    Spacer(Modifier.width(8.dp))
+                    Button(
+                        onClick = {
+                            if (editableText.isNotBlank()) {
+                                onInsertText(editableText.trim())
+                                onDismiss()
+                            }
+                        },
+                        enabled = editableText.isNotBlank() && !isProcessing,
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2563EB))
+                    ) {
+                        Text("Add to Whiteboard")
+                    }
+                }
+            }
+        }
+    }
+}
+
+// 20. ELEMENT EDIT DIALOG
+@Composable
+fun ElementEditDialog(
+    selectedElement: CanvasElement?,
+    onColorSelected: (Color) -> Unit,
+    onFillToggle: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    if (selectedElement == null) return
+
+    val isShape = selectedElement is CanvasElement.Shape
+    val isFilled = if (selectedElement is CanvasElement.Shape) selectedElement.isFilled else false
+
+    Dialog(onDismissRequest = onDismiss) {
+        Card(
+            shape = RoundedCornerShape(20.dp),
+            colors = CardDefaults.cardColors(containerColor = Color.White),
+            modifier = Modifier.fillMaxWidth().padding(12.dp)
+        ) {
+            Column(modifier = Modifier.padding(20.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("Edit Style & Color", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color.Black)
+                    IconButton(onClick = onDismiss, modifier = Modifier.size(28.dp)) {
+                        Icon(Icons.Default.Close, contentDescription = "Close", tint = Color.Gray)
+                    }
+                }
+
+                if (isShape) {
+                    Spacer(Modifier.height(12.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.FormatColorFill, contentDescription = null, tint = Color.DarkGray)
+                            Spacer(Modifier.width(8.dp))
+                            Text("Fill Shape Color", fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = Color.Black)
+                        }
+                        Switch(
+                            checked = isFilled,
+                            onCheckedChange = { onFillToggle() },
+                            colors = SwitchDefaults.colors(
+                                checkedThumbColor = Color.White,
+                                checkedTrackColor = Color(0xFF00E676)
+                            )
+                        )
+                    }
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp), color = Color(0xFFEEEEEE))
+                }
+
+                Text("Select Primary Color", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = Color.Gray)
+                Spacer(Modifier.height(10.dp))
+
+                LazyVerticalGrid(
+                    columns = GridCells.Fixed(5),
+                    modifier = Modifier.height(180.dp)
+                ) {
+                    items(EXTENDED_PALETTE) { color ->
+                        Box(
+                            modifier = Modifier
+                                .padding(4.dp)
+                                .size(36.dp)
+                                .clip(CircleShape)
+                                .background(color)
+                                .border(1.dp, Color(0xFFCCCCCC), CircleShape)
+                                .clickable {
+                                    onColorSelected(color)
+                                    onDismiss()
+                                }
+                        )
+                    }
+                }
+
+                Spacer(Modifier.height(16.dp))
+                Button(
+                    onClick = onDismiss,
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2196F3)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("Done")
+                }
+            }
+        }
+    }
+}
+

@@ -4,11 +4,13 @@ import android.app.Application
 import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.graphics.Canvas
 import android.graphics.Paint
 import android.graphics.pdf.PdfDocument
 import android.net.Uri
 import android.util.Base64
+import android.util.Log
 import android.widget.Toast
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.ui.geometry.Offset
@@ -81,6 +83,11 @@ data class WhiteboardUiState(
     val showPagesDialog: Boolean = false,
     val showHelpDialog: Boolean = false,
     val showSavedSuccess: Boolean = false,
+    val showWebImageDialog: Boolean = false,
+    val showOcrDialog: Boolean = false,
+    val showElementEditDialog: Boolean = false,
+    val isOcrProcessing: Boolean = false,
+    val ocrExtractedText: String = "",
     // Pan & Zoom
     val zoomScale: Float = 1f,
     val panOffset: Offset = Offset.Zero
@@ -155,6 +162,8 @@ class WhiteboardViewModel(application: Application) : AndroidViewModel(applicati
                 ToolType.SCIENCE -> _uiState.update { it.copy(showScienceDialog = true) }
                 ToolType.LASER -> _uiState.update { it.copy(showLaserDialog = true) }
                 ToolType.CUSTOMIZE -> _uiState.update { it.copy(showCustomizeDialog = true) }
+                ToolType.WEB_IMAGE -> _uiState.update { it.copy(showWebImageDialog = true) }
+                ToolType.OCR -> _uiState.update { it.copy(showOcrDialog = true) }
                 else -> {}
             }
         } else {
@@ -170,6 +179,8 @@ class WhiteboardViewModel(application: Application) : AndroidViewModel(applicati
                 ToolType.STICKERS -> _uiState.update { it.copy(showStickersDialog = true) }
                 ToolType.SCIENCE -> _uiState.update { it.copy(showScienceDialog = true) }
                 ToolType.CUSTOMIZE -> _uiState.update { it.copy(showCustomizeDialog = true) }
+                ToolType.WEB_IMAGE -> _uiState.update { it.copy(showWebImageDialog = true) }
+                ToolType.OCR -> _uiState.update { it.copy(showOcrDialog = true) }
                 ToolType.SAVE -> saveCurrentBoard()
                 ToolType.CLEAR -> _uiState.update { it.copy(showClearConfirmDialog = true) }
                 ToolType.UNDO -> undo()
@@ -198,7 +209,10 @@ class WhiteboardViewModel(application: Application) : AndroidViewModel(applicati
                 showCustomizeDialog = false,
                 showClearConfirmDialog = false,
                 showPagesDialog = false,
-                showHelpDialog = false
+                showHelpDialog = false,
+                showWebImageDialog = false,
+                showOcrDialog = false,
+                showElementEditDialog = false
             )
         }
     }
@@ -330,25 +344,78 @@ class WhiteboardViewModel(application: Application) : AndroidViewModel(applicati
             }
             ToolType.SMART -> {
                 if (currentDrawingPoints.size > 2) {
-                    val recognized = SmartShapeRecognizer.recognize(
-                        currentDrawingPoints.toList(),
-                        state.activeLayerId,
-                        state.penColor.toArgb(),
-                        state.penSize
-                    )
-                    if (recognized != null) {
-                        addElementToCurrentPage(recognized)
-                    } else {
-                        // Fallback to normal stroke
-                        val stroke = CanvasElement.Stroke(
-                            id = "stroke_${System.currentTimeMillis()}",
-                            layerId = state.activeLayerId,
-                            points = currentDrawingPoints.toList(),
-                            colorArgb = state.penColor.toArgb(),
-                            strokeWidth = state.penSize,
-                            brushType = state.brushType
-                        )
-                        addElementToCurrentPage(stroke)
+                    val pts = currentDrawingPoints.toList()
+                    val layerId = state.activeLayerId
+                    val colorArgb = state.penColor.toArgb()
+                    val strokeWidth = state.penSize
+                    val brushType = state.brushType
+
+                    viewModelScope.launch {
+                        var recognizedElement: CanvasElement? = null
+
+                        // 1. Google ML Kit Digital Ink Recognition API
+                        try {
+                            val mlResult = com.example.ui.whiteboard.ml.MlKitManager.recognizeInk(pts)
+                            if (mlResult != null) {
+                                val candidate = mlResult.first
+                                val shapeType = com.example.ui.whiteboard.ml.MlKitManager.mapCandidateToShapeType(candidate)
+                                val minX = pts.minOf { it.x }
+                                val maxX = pts.maxOf { it.x }
+                                val minY = pts.minOf { it.y }
+                                val maxY = pts.maxOf { it.y }
+                                val w = maxX - minX
+                                val h = maxY - minY
+
+                                if (shapeType != null) {
+                                    val sEndX = if (shapeType == ShapeType.SQUARE || shapeType == ShapeType.CIRCLE) minX + maxOf(w, h) else maxX
+                                    val sEndY = if (shapeType == ShapeType.SQUARE || shapeType == ShapeType.CIRCLE) minY + maxOf(w, h) else maxY
+                                    recognizedElement = CanvasElement.Shape(
+                                        id = "smart_ml_${System.currentTimeMillis()}",
+                                        layerId = layerId,
+                                        shapeType = shapeType,
+                                        startX = minX,
+                                        startY = minY,
+                                        endX = sEndX,
+                                        endY = sEndY,
+                                        colorArgb = colorArgb,
+                                        strokeWidth = strokeWidth
+                                    )
+                                } else if (candidate.isNotBlank() && candidate.length <= 20) {
+                                    val fontSize = maxOf(32f, minOf(96f, h * 0.9f))
+                                    recognizedElement = CanvasElement.Text(
+                                        id = "smart_txt_${System.currentTimeMillis()}",
+                                        layerId = layerId,
+                                        text = candidate,
+                                        x = minX,
+                                        y = maxY,
+                                        colorArgb = colorArgb,
+                                        fontSize = fontSize
+                                    )
+                                }
+                            }
+                        } catch (e: Exception) {
+                            Log.w("WhiteboardViewModel", "ML Kit Ink recognition error", e)
+                        }
+
+                        // 2. Fallback to geometric shape & symbol recognizer
+                        if (recognizedElement == null) {
+                            recognizedElement = SmartShapeRecognizer.recognize(pts, layerId, colorArgb, strokeWidth)
+                        }
+
+                        // 3. Fallback to regular stroke
+                        if (recognizedElement != null) {
+                            addElementToCurrentPage(recognizedElement)
+                        } else {
+                            val stroke = CanvasElement.Stroke(
+                                id = "stroke_${System.currentTimeMillis()}",
+                                layerId = layerId,
+                                points = pts,
+                                colorArgb = colorArgb,
+                                strokeWidth = strokeWidth,
+                                brushType = brushType
+                            )
+                            addElementToCurrentPage(stroke)
+                        }
                     }
                 }
                 currentDrawingPoints.clear()
@@ -381,46 +448,47 @@ class WhiteboardViewModel(application: Application) : AndroidViewModel(applicati
     }
 
     private fun isElementIntersecting(element: CanvasElement, point: PointF, radius: Float): Boolean {
+        val screenOffset = androidx.compose.ui.geometry.Offset(point.x, point.y)
+        val local = ElementTransformer.mapToLocal(screenOffset, element)
+        val effectiveScale = maxOf(0.1f, element.scale)
+        val localRadius = radius / effectiveScale
+
         return when (element) {
             is CanvasElement.Stroke -> {
-                element.points.any { p ->
-                    kotlin.math.hypot(p.x - point.x, p.y - point.y) < radius + element.strokeWidth / 2f
+                val pts = element.points
+                if (pts.isEmpty()) return false
+                if (pts.size == 1) {
+                    val p = pts[0]
+                    kotlin.math.hypot(p.x - local.x, p.y - local.y) < localRadius + element.strokeWidth / 2f
+                } else {
+                    for (i in 0 until pts.size - 1) {
+                        val p1 = pts[i]
+                        val p2 = pts[i + 1]
+                        val d = distToSegment(local.x, local.y, p1.x, p1.y, p2.x, p2.y)
+                        if (d < localRadius + element.strokeWidth / 2f) {
+                            return true
+                        }
+                    }
+                    false
                 }
             }
-            is CanvasElement.Shape -> {
-                val minX = minOf(element.startX, element.endX) - radius
-                val maxX = maxOf(element.startX, element.endX) + radius
-                val minY = minOf(element.startY, element.endY) - radius
-                val maxY = maxOf(element.startY, element.endY) + radius
-                point.x in minX..maxX && point.y in minY..maxY
-            }
-            is CanvasElement.Text -> {
-                point.x in (element.x - radius)..(element.x + 200f + radius) &&
-                        point.y in (element.y - element.fontSize - radius)..(element.y + radius)
-            }
-            is CanvasElement.Formula -> {
-                point.x in (element.x - radius)..(element.x + 220f + radius) &&
-                        point.y in (element.y - element.fontSize - radius)..(element.y + radius)
-            }
-            is CanvasElement.Table -> {
-                val w = element.cols * element.cellWidth
-                val h = element.rows * element.cellHeight
-                point.x in (element.x - radius)..(element.x + w + radius) &&
-                        point.y in (element.y - radius)..(element.y + h + radius)
-            }
-            is CanvasElement.Sticker -> {
-                point.x in (element.x - radius)..(element.x + element.size + radius) &&
-                        point.y in (element.y - radius)..(element.y + element.size + radius)
-            }
-            is CanvasElement.ScienceDiagram -> {
-                point.x in (element.x - radius)..(element.x + element.size + radius) &&
-                        point.y in (element.y - radius)..(element.y + element.size + radius)
-            }
-            is CanvasElement.Image -> {
-                point.x in (element.x - radius)..(element.x + element.width + radius) &&
-                        point.y in (element.y - radius)..(element.y + element.height + radius)
+            else -> {
+                val b = element.getBounds()
+                local.x in (b.left - localRadius)..(b.right + localRadius) &&
+                        local.y in (b.top - localRadius)..(b.bottom + localRadius)
             }
         }
+    }
+
+    private fun distToSegment(px: Float, py: Float, x1: Float, y1: Float, x2: Float, y2: Float): Float {
+        val dx = x2 - x1
+        val dy = y2 - y1
+        val lenSq = dx * dx + dy * dy
+        if (lenSq == 0f) return kotlin.math.hypot(px - x1, py - y1)
+        val t = maxOf(0f, minOf(1f, ((px - x1) * dx + (py - y1) * dy) / lenSq))
+        val projX = x1 + t * dx
+        val projY = y1 + t * dy
+        return kotlin.math.hypot(px - projX, py - projY)
     }
 
     fun addElementToCurrentPage(element: CanvasElement) {
@@ -483,6 +551,38 @@ class WhiteboardViewModel(application: Application) : AndroidViewModel(applicati
         _uiState.update { it.copy(pages = updatedPages) }
     }
 
+    fun openEditDialogForSelected() {
+        if (_uiState.value.selectedElementId != null) {
+            _uiState.update { it.copy(showElementEditDialog = true) }
+        }
+    }
+
+    fun updateSelectedElementColor(newColor: Color) {
+        val selectedId = _uiState.value.selectedElementId ?: return
+        pushUndoState()
+        updateElement(selectedId) { element ->
+            val colorArgb = newColor.toArgb()
+            when (element) {
+                is CanvasElement.Stroke -> element.copy(colorArgb = colorArgb)
+                is CanvasElement.Shape -> element.copy(colorArgb = colorArgb)
+                is CanvasElement.Text -> element.copy(colorArgb = colorArgb)
+                is CanvasElement.Formula -> element.copy(colorArgb = colorArgb)
+                is CanvasElement.Table -> element.copy(colorArgb = colorArgb)
+                else -> element
+            }
+        }
+    }
+
+    fun toggleSelectedShapeFill() {
+        val selectedId = _uiState.value.selectedElementId ?: return
+        pushUndoState()
+        updateElement(selectedId) { element ->
+            if (element is CanvasElement.Shape) {
+                element.copy(isFilled = !element.isFilled)
+            } else element
+        }
+    }
+
     fun updateElement(elementId: String, transform: (CanvasElement) -> CanvasElement) {
         val currIdx = _uiState.value.currentPageIndex
         val updatedPages = _uiState.value.pages.toMutableList()
@@ -501,14 +601,23 @@ class WhiteboardViewModel(application: Application) : AndroidViewModel(applicati
         _uiState.update { it.copy(pages = updatedPages) }
     }
 
+    private fun getViewportCenterOffset(): Offset {
+        val state = _uiState.value
+        val z = if (state.zoomScale != 0f) state.zoomScale else 1f
+        val cx = (-state.panOffset.x + 200f) / z
+        val cy = (-state.panOffset.y + 350f) / z
+        return Offset(cx, cy)
+    }
+
     // Add Text Element
     fun addTextElement(text: String, color: Color, size: Float) {
+        val center = getViewportCenterOffset()
         val element = CanvasElement.Text(
             id = "text_${System.currentTimeMillis()}",
             layerId = _uiState.value.activeLayerId,
             text = text,
-            x = 120f,
-            y = 280f,
+            x = center.x - 100f,
+            y = center.y,
             colorArgb = color.toArgb(),
             fontSize = size
         )
@@ -517,12 +626,13 @@ class WhiteboardViewModel(application: Application) : AndroidViewModel(applicati
 
     // Add Math Formula Element
     fun addFormulaElement(formula: String, color: Color, size: Float) {
+        val center = getViewportCenterOffset()
         val element = CanvasElement.Formula(
             id = "formula_${System.currentTimeMillis()}",
             layerId = _uiState.value.activeLayerId,
             formula = formula,
-            x = 120f,
-            y = 300f,
+            x = center.x - 100f,
+            y = center.y,
             colorArgb = color.toArgb(),
             fontSize = size
         )
@@ -531,13 +641,16 @@ class WhiteboardViewModel(application: Application) : AndroidViewModel(applicati
 
     // Add Table Element
     fun addTableElement(rows: Int, cols: Int) {
+        val center = getViewportCenterOffset()
+        val w = cols * 100f
+        val h = rows * 50f
         val element = CanvasElement.Table(
             id = "table_${System.currentTimeMillis()}",
             layerId = _uiState.value.activeLayerId,
             rows = rows,
             cols = cols,
-            x = 100f,
-            y = 250f,
+            x = center.x - w / 2f,
+            y = center.y - h / 2f,
             colorArgb = _uiState.value.penColor.toArgb()
         )
         addElementToCurrentPage(element)
@@ -545,19 +658,21 @@ class WhiteboardViewModel(application: Application) : AndroidViewModel(applicati
 
     // Add Sticker Element
     fun addStickerElement(stickerId: String, title: String) {
+        val center = getViewportCenterOffset()
         val element = CanvasElement.Sticker(
             id = "sticker_${System.currentTimeMillis()}",
             layerId = _uiState.value.activeLayerId,
             stickerId = stickerId,
             title = title,
-            x = 140f,
-            y = 260f
+            x = center.x - 60f,
+            y = center.y - 60f
         )
         addElementToCurrentPage(element)
     }
 
     // Add Science Diagram Element
     fun addScienceElement(category: String, symbolKey: String, label: String, atomicNum: Int) {
+        val center = getViewportCenterOffset()
         val element = CanvasElement.ScienceDiagram(
             id = "sci_${System.currentTimeMillis()}",
             layerId = _uiState.value.activeLayerId,
@@ -565,22 +680,198 @@ class WhiteboardViewModel(application: Application) : AndroidViewModel(applicati
             symbolKey = symbolKey,
             label = label,
             atomicNumber = atomicNum,
-            x = 140f,
-            y = 260f
+            x = center.x - 65f,
+            y = center.y - 65f
         )
         addElementToCurrentPage(element)
     }
 
     // Add Image Element
     fun addImageElement(uriString: String) {
+        val state = _uiState.value
+        val x = -state.panOffset.x / maxOf(0.1f, state.zoomScale) + 100f
+        val y = -state.panOffset.y / maxOf(0.1f, state.zoomScale) + 220f
         val element = CanvasElement.Image(
             id = "img_${System.currentTimeMillis()}",
-            layerId = _uiState.value.activeLayerId,
+            layerId = state.activeLayerId,
             uriString = uriString,
-            x = 100f,
-            y = 220f
+            x = x,
+            y = y
         )
         addElementToCurrentPage(element)
+    }
+
+    fun importUriImage(context: Context, uri: Uri) {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val file = File(context.filesDir, "gallery_${System.currentTimeMillis()}.jpg")
+                context.contentResolver.openInputStream(uri)?.use { input ->
+                    FileOutputStream(file).use { output ->
+                        input.copyTo(output)
+                    }
+                }
+                val boundsOptions = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                BitmapFactory.decodeFile(file.absolutePath, boundsOptions)
+                val imgW = if (boundsOptions.outWidth > 0) boundsOptions.outWidth.toFloat() else 300f
+                val imgH = if (boundsOptions.outHeight > 0) boundsOptions.outHeight.toFloat() else 300f
+                val aspect = imgH / imgW.coerceAtLeast(1f)
+
+                withContext(Dispatchers.Main) {
+                    val state = _uiState.value
+                    val x = -state.panOffset.x / maxOf(0.1f, state.zoomScale) + 100f
+                    val y = -state.panOffset.y / maxOf(0.1f, state.zoomScale) + 200f
+                    val element = CanvasElement.Image(
+                        id = "img_${System.currentTimeMillis()}",
+                        layerId = state.activeLayerId,
+                        uriString = Uri.fromFile(file).toString(),
+                        x = x,
+                        y = y,
+                        width = 320f,
+                        height = (320f * aspect).coerceIn(100f, 600f)
+                    )
+                    addElementToCurrentPage(element)
+                }
+            } catch (e: Exception) {
+                Log.e("WhiteboardViewModel", "Failed to import gallery image", e)
+                withContext(Dispatchers.Main) {
+                    addImageElement(uri.toString())
+                }
+            }
+        }
+    }
+
+    // Pan & Zoom Controls
+    fun panCanvas(delta: Offset) {
+        _uiState.update { it.copy(panOffset = Offset(it.panOffset.x + delta.x, it.panOffset.y + delta.y)) }
+    }
+
+    fun zoomCanvas(scaleMultiplier: Float) {
+        _uiState.update {
+            val newScale = (it.zoomScale * scaleMultiplier).coerceIn(0.2f, 5.0f)
+            it.copy(zoomScale = newScale)
+        }
+    }
+
+    fun resetPanZoom() {
+        _uiState.update { it.copy(panOffset = Offset.Zero, zoomScale = 1f) }
+    }
+
+    fun addWebImage(url: String) {
+        val state = _uiState.value
+        val x = -state.panOffset.x / maxOf(0.1f, state.zoomScale) + 120f
+        val y = -state.panOffset.y / maxOf(0.1f, state.zoomScale) + 200f
+        val element = CanvasElement.Image(
+            id = "web_img_${System.currentTimeMillis()}",
+            layerId = state.activeLayerId,
+            uriString = url,
+            x = x,
+            y = y,
+            width = 320f,
+            height = 320f
+        )
+        addElementToCurrentPage(element)
+    }
+
+    fun addImageBitmap(context: Context, bitmap: Bitmap) {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val file = File(context.filesDir, "cam_${System.currentTimeMillis()}.jpg")
+                FileOutputStream(file).use { out ->
+                    bitmap.compress(Bitmap.CompressFormat.JPEG, 90, out)
+                }
+                withContext(Dispatchers.Main) {
+                    val state = _uiState.value
+                    val x = -state.panOffset.x / maxOf(0.1f, state.zoomScale) + 120f
+                    val y = -state.panOffset.y / maxOf(0.1f, state.zoomScale) + 200f
+                    val aspect = bitmap.height.toFloat() / bitmap.width.toFloat().coerceAtLeast(1f)
+                    val element = CanvasElement.Image(
+                        id = "cam_img_${System.currentTimeMillis()}",
+                        layerId = state.activeLayerId,
+                        uriString = Uri.fromFile(file).toString(),
+                        x = x,
+                        y = y,
+                        width = 320f,
+                        height = 320f * aspect
+                    )
+                    addElementToCurrentPage(element)
+                }
+            } catch (e: Exception) {
+                Log.e("WhiteboardViewModel", "Error saving camera bitmap", e)
+            }
+        }
+    }
+
+    fun importPdf(context: Context, uri: Uri) {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val pfd = context.contentResolver.openFileDescriptor(uri, "r")
+                if (pfd != null) {
+                    val renderer = android.graphics.pdf.PdfRenderer(pfd)
+                    val pageCount = renderer.pageCount
+                    val page = renderer.openPage(0)
+                    val w = page.width * 2
+                    val h = page.height * 2
+                    val bitmap = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+                    val canvas = Canvas(bitmap)
+                    canvas.drawColor(android.graphics.Color.WHITE)
+                    page.render(bitmap, null, null, android.graphics.pdf.PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
+                    page.close()
+                    renderer.close()
+                    pfd.close()
+
+                    val file = File(context.filesDir, "pdf_page_${System.currentTimeMillis()}.png")
+                    FileOutputStream(file).use { out ->
+                        bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
+                    }
+                    withContext(Dispatchers.Main) {
+                        val state = _uiState.value
+                        val x = -state.panOffset.x / maxOf(0.1f, state.zoomScale) + 80f
+                        val y = -state.panOffset.y / maxOf(0.1f, state.zoomScale) + 140f
+                        val el = CanvasElement.Image(
+                            id = "pdf_${System.currentTimeMillis()}",
+                            layerId = state.activeLayerId,
+                            uriString = Uri.fromFile(file).toString(),
+                            x = x,
+                            y = y,
+                            width = 400f,
+                            height = 400f * (h.toFloat() / w.toFloat().coerceAtLeast(1f))
+                        )
+                        addElementToCurrentPage(el)
+                        Toast.makeText(context, "Imported PDF Page 1 ($pageCount pages total)", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e("WhiteboardViewModel", "Failed to import PDF", e)
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(context, "Could not import PDF: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
+                }
+            }
+        }
+    }
+
+    fun runOcrOnBitmap(bitmap: Bitmap) {
+        _uiState.update { it.copy(isOcrProcessing = true, showOcrDialog = true) }
+        viewModelScope.launch {
+            val text = com.example.ui.whiteboard.ml.MlKitManager.recognizeTextFromBitmap(bitmap)
+            _uiState.update { it.copy(isOcrProcessing = false, ocrExtractedText = text) }
+        }
+    }
+
+    fun addOcrTextToCanvas(text: String) {
+        val state = _uiState.value
+        val x = -state.panOffset.x / maxOf(0.1f, state.zoomScale) + 120f
+        val y = -state.panOffset.y / maxOf(0.1f, state.zoomScale) + 240f
+        val el = CanvasElement.Text(
+            id = "ocr_txt_${System.currentTimeMillis()}",
+            layerId = state.activeLayerId,
+            text = text,
+            x = x,
+            y = y,
+            colorArgb = state.penColor.toArgb(),
+            fontSize = 36f
+        )
+        addElementToCurrentPage(el)
+        _uiState.update { it.copy(showOcrDialog = false, ocrExtractedText = "") }
     }
 
     // Layers Management

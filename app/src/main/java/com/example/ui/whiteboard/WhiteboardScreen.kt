@@ -36,17 +36,28 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.withTransform
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
+import kotlin.math.abs
+import kotlin.math.cos
+import kotlin.math.roundToInt
+import kotlin.math.sin
 import com.example.data.model.*
+import com.example.ui.ads.AdManager
+import com.example.ui.ads.BannerAdView
 import com.example.ui.ads.RewardedAdManager
 import com.example.ui.whiteboard.dialogs.*
+
+enum class CameraTarget { REGULAR, OCR }
 
 @Composable
 fun WhiteboardScreen(
@@ -73,17 +84,109 @@ fun WhiteboardScreen(
     val photoPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.PickVisualMedia()
     ) { uri: Uri? ->
-        uri?.let { viewModel.addImageElement(it.toString()) }
+        if (uri != null) {
+            viewModel.importUriImage(context, uri)
+        }
+    }
+
+    // Camera launcher for taking photo
+    val cameraLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.TakePicturePreview()
+    ) { bitmap: android.graphics.Bitmap? ->
+        if (bitmap != null) {
+            viewModel.addImageBitmap(context, bitmap)
+        }
+    }
+
+    // PDF document import launcher
+    val pdfPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri: Uri? ->
+        if (uri != null) {
+            viewModel.importPdf(context, uri)
+        }
+    }
+
+    // OCR Gallery Picker
+    val ocrPhotoPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.PickVisualMedia()
+    ) { uri: Uri? ->
+        if (uri != null) {
+            try {
+                val input = context.contentResolver.openInputStream(uri)
+                val bitmap = android.graphics.BitmapFactory.decodeStream(input)
+                input?.close()
+                if (bitmap != null) {
+                    viewModel.runOcrOnBitmap(bitmap)
+                }
+            } catch (e: Exception) {
+                Toast.makeText(context, "Failed to load image for OCR", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    // OCR Camera Launcher
+    val ocrCameraLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.TakePicturePreview()
+    ) { bitmap: android.graphics.Bitmap? ->
+        if (bitmap != null) {
+            viewModel.runOcrOnBitmap(bitmap)
+        }
+    }
+
+    var pendingCameraTarget by remember { mutableStateOf<CameraTarget?>(null) }
+
+    val cameraPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        if (isGranted) {
+            try {
+                when (pendingCameraTarget) {
+                    CameraTarget.REGULAR -> cameraLauncher.launch(null)
+                    CameraTarget.OCR -> ocrCameraLauncher.launch(null)
+                    null -> {}
+                }
+            } catch (e: Exception) {
+                Toast.makeText(context, "Camera application not available on this device", Toast.LENGTH_SHORT).show()
+            }
+        } else {
+            Toast.makeText(context, "Camera permission is required to capture photos", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    val safeLaunchCamera: (CameraTarget) -> Unit = { target ->
+        pendingCameraTarget = target
+        val permissionState = androidx.core.content.ContextCompat.checkSelfPermission(
+            context,
+            android.Manifest.permission.CAMERA
+        )
+        if (permissionState == android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            try {
+                when (target) {
+                    CameraTarget.REGULAR -> cameraLauncher.launch(null)
+                    CameraTarget.OCR -> ocrCameraLauncher.launch(null)
+                }
+            } catch (e: Exception) {
+                Toast.makeText(context, "Camera application not available on this device", Toast.LENGTH_SHORT).show()
+            }
+        } else {
+            cameraPermissionLauncher.launch(android.Manifest.permission.CAMERA)
+        }
     }
 
     // Ruler drag state
     var rulerPosition by remember { mutableStateOf(Offset(100f, 400f)) }
+    var activeEraserPoint by remember { mutableStateOf<Offset?>(null) }
+    val density = LocalDensity.current
 
-    Box(
+    BoxWithConstraints(
         modifier = Modifier
             .fillMaxSize()
             .background(uiState.boardColor)
     ) {
+        val screenWidthPx = with(density) { maxWidth.toPx() }
+        val screenHeightPx = with(density) { maxHeight.toPx() }
+
         val currentPage = uiState.pages.getOrElse(uiState.currentPageIndex) { BoardPageState() }
         val visibleLayers = remember(currentPage.layers) {
             currentPage.layers.filter { it.isVisible }.map { it.id }.toSet()
@@ -106,35 +209,65 @@ fun WhiteboardScreen(
             currentPage.elements.find { it.id == uiState.selectedElementId }
         }
 
+        fun screenToCanvas(screenPt: Offset): Offset {
+            val z = if (uiState.zoomScale != 0f) uiState.zoomScale else 1f
+            return Offset(
+                (screenPt.x - uiState.panOffset.x) / z,
+                (screenPt.y - uiState.panOffset.y) / z
+            )
+        }
+
+        fun canvasToScreen(canvasPt: Offset): Offset {
+            return Offset(
+                canvasPt.x * uiState.zoomScale + uiState.panOffset.x,
+                canvasPt.y * uiState.zoomScale + uiState.panOffset.y
+            )
+        }
+
         // 1. MAIN DRAWING CANVAS
         Canvas(
             modifier = Modifier
                 .fillMaxSize()
                 .pointerInput(Unit) {
+                    detectTransformGestures { _, pan, zoom, _ ->
+                        if (zoom != 1f || pan != Offset.Zero) {
+                            viewModel.zoomCanvas(zoom)
+                            viewModel.panCanvas(pan)
+                        }
+                    }
+                }
+                .pointerInput(Unit) {
                     detectDragGestures(
                         onDragStart = { offset ->
+                            if (currentToolState.value == ToolType.HAND_PAN) {
+                                return@detectDragGestures
+                            }
+                            val canvasOffset = screenToCanvas(offset)
+                            if (currentToolState.value == ToolType.ERASER) {
+                                activeEraserPoint = offset
+                            }
                             val elements = currentElementsState.value
                             val selectedId = currentSelectedIdState.value
                             val selected = elements.find { it.id == selectedId }
                             var handle = TransformHandle.NONE
                             if (selected != null) {
-                                handle = ElementTransformer.hitTestHandle(selected, offset)
+                                handle = ElementTransformer.hitTestHandle(selected, canvasOffset)
                             }
 
                             if (handle != TransformHandle.NONE && selected != null) {
                                 activeHandle = handle
-                                initialTouchPoint = offset
+                                initialTouchPoint = canvasOffset
                                 initialElement = selected
                             } else {
                                 // Check if touching any other visible element (top-most first)
                                 val touchedElement = elements.asReversed().find { el ->
-                                    currentVisibleLayersState.value.contains(el.layerId) && ElementTransformer.hitTestElement(el, offset)
+                                    currentVisibleLayersState.value.contains(el.layerId) && ElementTransformer.hitTestElement(el, canvasOffset)
                                 }
 
                                 if (touchedElement != null && (currentToolState.value == ToolType.SELECT || currentToolState.value == ToolType.LASSO || selectedId != null)) {
                                     viewModel.selectElement(touchedElement.id)
                                     activeHandle = TransformHandle.BODY
-                                    initialTouchPoint = offset
+                                    initialTouchPoint = canvasOffset
                                     initialElement = touchedElement
                                 } else {
                                     if (currentToolState.value == ToolType.SELECT || currentToolState.value == ToolType.LASSO) {
@@ -144,18 +277,25 @@ fun WhiteboardScreen(
                                     } else {
                                         activeHandle = TransformHandle.NONE
                                         initialElement = null
-                                        viewModel.onDrawStart(PointF(offset.x, offset.y))
+                                        viewModel.onDrawStart(PointF(canvasOffset.x, canvasOffset.y))
                                     }
                                 }
                             }
                         },
-                        onDrag = { change, _ ->
+                        onDrag = { change, dragAmount ->
                             change.consume()
+                            if (currentToolState.value == ToolType.HAND_PAN) {
+                                viewModel.panCanvas(dragAmount)
+                                return@detectDragGestures
+                            }
+                            val canvasPt = screenToCanvas(change.position)
+                            if (currentToolState.value == ToolType.ERASER) {
+                                activeEraserPoint = change.position
+                            }
                             if (activeHandle != TransformHandle.NONE && initialElement != null) {
-                                val currentPt = change.position
-                                val dx = currentPt.x - initialTouchPoint.x
-                                val dy = currentPt.y - initialTouchPoint.y
                                 val currentInitial = initialElement!!
+                                val dx = canvasPt.x - initialTouchPoint.x
+                                val dy = canvasPt.y - initialTouchPoint.y
 
                                 when (activeHandle) {
                                     TransformHandle.BODY -> {
@@ -166,7 +306,7 @@ fun WhiteboardScreen(
                                     TransformHandle.ROTATE -> {
                                         val center = currentInitial.getCenter()
                                         val initialAngle = kotlin.math.atan2((initialTouchPoint.y - center.y).toDouble(), (initialTouchPoint.x - center.x).toDouble())
-                                        val currentAngle = kotlin.math.atan2((currentPt.y - center.y).toDouble(), (currentPt.x - center.x).toDouble())
+                                        val currentAngle = kotlin.math.atan2((canvasPt.y - center.y).toDouble(), (canvasPt.x - center.x).toDouble())
                                         val deltaDeg = Math.toDegrees(currentAngle - initialAngle).toFloat()
                                         val newRot = (currentInitial.rotation + deltaDeg) % 360f
                                         viewModel.updateElement(currentInitial.id) {
@@ -176,7 +316,7 @@ fun WhiteboardScreen(
                                     TransformHandle.TOP_LEFT, TransformHandle.TOP_RIGHT, TransformHandle.BOTTOM_LEFT, TransformHandle.BOTTOM_RIGHT -> {
                                         val center = currentInitial.getCenter()
                                         val initialDist = kotlin.math.hypot(initialTouchPoint.x - center.x, initialTouchPoint.y - center.y)
-                                        val currentDist = kotlin.math.hypot(currentPt.x - center.x, currentPt.y - center.y)
+                                        val currentDist = kotlin.math.hypot(canvasPt.x - center.x, canvasPt.y - center.y)
                                         if (initialDist > 8f) {
                                             val factor = currentDist / initialDist
                                             val newScale = (currentInitial.scale * factor).coerceIn(0.15f, 10f)
@@ -185,13 +325,53 @@ fun WhiteboardScreen(
                                             }
                                         }
                                     }
+                                    TransformHandle.LEFT, TransformHandle.RIGHT, TransformHandle.TOP, TransformHandle.BOTTOM -> {
+                                        val rad = Math.toRadians(-currentInitial.rotation.toDouble())
+                                        val cosA = cos(rad).toFloat()
+                                        val sinA = sin(rad).toFloat()
+                                        val rawDx = canvasPt.x - initialTouchPoint.x
+                                        val rawDy = canvasPt.y - initialTouchPoint.y
+                                        val localDx = (rawDx * cosA - rawDy * sinA) / currentInitial.scale
+                                        val localDy = (rawDx * sinA + rawDy * cosA) / currentInitial.scale
+
+                                        when (currentInitial) {
+                                            is CanvasElement.Shape -> {
+                                                val dLeft = if (activeHandle == TransformHandle.LEFT) localDx else 0f
+                                                val dRight = if (activeHandle == TransformHandle.RIGHT) localDx else 0f
+                                                val dTop = if (activeHandle == TransformHandle.TOP) localDy else 0f
+                                                val dBottom = if (activeHandle == TransformHandle.BOTTOM) localDy else 0f
+                                                viewModel.updateElement(currentInitial.id) {
+                                                    currentInitial.withBoundsAdjustment(dLeft, dTop, dRight, dBottom)
+                                                }
+                                            }
+                                            is CanvasElement.Image -> {
+                                                val dW = if (activeHandle == TransformHandle.RIGHT) localDx else if (activeHandle == TransformHandle.LEFT) -localDx else 0f
+                                                val dH = if (activeHandle == TransformHandle.BOTTOM) localDy else if (activeHandle == TransformHandle.TOP) -localDy else 0f
+                                                viewModel.updateElement(currentInitial.id) {
+                                                    currentInitial.withSizeAdjustment(dW, dH)
+                                                }
+                                            }
+                                            else -> {
+                                                val b = currentInitial.getBounds()
+                                                val w = b.width.coerceAtLeast(20f)
+                                                val factor = if (activeHandle == TransformHandle.RIGHT) (w + localDx) / w
+                                                             else if (activeHandle == TransformHandle.LEFT) (w - localDx) / w
+                                                             else 1f
+                                                val newScale = (currentInitial.scale * factor).coerceIn(0.2f, 8f)
+                                                viewModel.updateElement(currentInitial.id) {
+                                                    currentInitial.withScale(newScale)
+                                                }
+                                            }
+                                        }
+                                    }
                                     else -> {}
                                 }
                             } else {
-                                viewModel.onDrawMove(PointF(change.position.x, change.position.y))
+                                viewModel.onDrawMove(PointF(canvasPt.x, canvasPt.y))
                             }
                         },
                         onDragEnd = {
+                            activeEraserPoint = null
                             if (activeHandle != TransformHandle.NONE) {
                                 activeHandle = TransformHandle.NONE
                                 initialElement = null
@@ -200,6 +380,7 @@ fun WhiteboardScreen(
                             }
                         },
                         onDragCancel = {
+                            activeEraserPoint = null
                             if (activeHandle != TransformHandle.NONE) {
                                 activeHandle = TransformHandle.NONE
                                 initialElement = null
@@ -211,9 +392,10 @@ fun WhiteboardScreen(
                 }
                 .pointerInput(Unit) {
                     detectTapGestures { offset ->
+                        val canvasTap = screenToCanvas(offset)
                         val elements = currentElementsState.value
                         val touched = elements.asReversed().find { el ->
-                            currentVisibleLayersState.value.contains(el.layerId) && ElementTransformer.hitTestElement(el, offset)
+                            currentVisibleLayersState.value.contains(el.layerId) && ElementTransformer.hitTestElement(el, canvasTap)
                         }
                         if (touched != null) {
                             viewModel.selectElement(touched.id)
@@ -221,53 +403,66 @@ fun WhiteboardScreen(
                             if (currentToolState.value == ToolType.SELECT || currentToolState.value == ToolType.LASSO) {
                                 viewModel.selectElement(null)
                             } else if (currentToolState.value == ToolType.PEN || currentToolState.value == ToolType.SMART) {
-                                viewModel.onDrawStart(PointF(offset.x, offset.y))
+                                viewModel.onDrawStart(PointF(canvasTap.x, canvasTap.y))
+                                viewModel.onDrawEnd()
+                            } else if (currentToolState.value == ToolType.ERASER) {
+                                viewModel.onDrawStart(PointF(canvasTap.x, canvasTap.y))
                                 viewModel.onDrawEnd()
                             } else if (currentToolState.value == ToolType.LASER) {
-                                viewModel.onDrawStart(PointF(offset.x, offset.y))
+                                viewModel.onDrawStart(PointF(canvasTap.x, canvasTap.y))
                             }
                         }
                     }
                 }
         ) {
-            // Draw board texture
-            CanvasRenderer.drawBoardTexture(this, uiState.boardTexture, isDarkBg)
+            withTransform({
+                translate(uiState.panOffset.x, uiState.panOffset.y)
+                scale(uiState.zoomScale, uiState.zoomScale, Offset.Zero)
+            }) {
+                // Draw board texture
+                CanvasRenderer.drawBoardTexture(this, uiState.boardTexture, isDarkBg)
 
-            // Draw elements on visible layers
-            currentPage.elements.forEach { element ->
-                if (visibleLayers.contains(element.layerId)) {
-                    CanvasRenderer.drawElement(this, element)
+                // Draw elements on visible layers
+                currentPage.elements.forEach { element ->
+                    if (visibleLayers.contains(element.layerId)) {
+                        CanvasRenderer.drawElement(this, element)
+                    }
+                }
+
+                // Draw selection box and transformation handles if an element is selected
+                selectedElement?.let { sel ->
+                    if (visibleLayers.contains(sel.layerId)) {
+                        CanvasRenderer.drawSelectionBox(this, sel)
+                    }
+                }
+
+                // Draw in-progress stroke
+                if (viewModel.currentDrawingPoints.size > 1) {
+                    val tempStroke = CanvasElement.Stroke(
+                        id = "temp",
+                        layerId = uiState.activeLayerId,
+                        points = viewModel.currentDrawingPoints.toList(),
+                        colorArgb = uiState.penColor.toArgb(),
+                        strokeWidth = uiState.penSize,
+                        brushType = uiState.brushType
+                    )
+                    CanvasRenderer.drawElement(this, tempStroke)
+                }
+
+                // Draw in-progress shape
+                currentShapeDraft?.let { shapeDraft ->
+                    CanvasRenderer.drawElement(this, shapeDraft)
+                }
+
+                // Draw Laser Pointer Trail
+                if (uiState.laserPoints.isNotEmpty()) {
+                    CanvasRenderer.drawLaserTrail(this, uiState.laserPoints, uiState.laserColor, uiState.laserSize)
                 }
             }
 
-            // Draw selection box and transformation handles if an element is selected
-            selectedElement?.let { sel ->
-                if (visibleLayers.contains(sel.layerId)) {
-                    CanvasRenderer.drawSelectionBox(this, sel)
-                }
-            }
-
-            // Draw in-progress stroke
-            if (viewModel.currentDrawingPoints.size > 1) {
-                val tempStroke = CanvasElement.Stroke(
-                    id = "temp",
-                    layerId = uiState.activeLayerId,
-                    points = viewModel.currentDrawingPoints.toList(),
-                    colorArgb = uiState.penColor.toArgb(),
-                    strokeWidth = uiState.penSize,
-                    brushType = uiState.brushType
-                )
-                CanvasRenderer.drawElement(this, tempStroke)
-            }
-
-            // Draw in-progress shape
-            currentShapeDraft?.let { shapeDraft ->
-                CanvasRenderer.drawElement(this, shapeDraft)
-            }
-
-            // Draw Laser Pointer Trail
-            if (uiState.laserPoints.isNotEmpty()) {
-                CanvasRenderer.drawLaserTrail(this, uiState.laserPoints, uiState.laserColor, uiState.laserSize)
+            // Draw Eraser Shape Cursor in screen space
+            if (uiState.activeTool == ToolType.ERASER && activeEraserPoint != null) {
+                CanvasRenderer.drawEraserCursor(this, activeEraserPoint!!, uiState.eraserSize * uiState.zoomScale, isDarkBg)
             }
         }
 
@@ -275,12 +470,37 @@ fun WhiteboardScreen(
         selectedElement?.let { sel ->
             val center = sel.getCenter()
             val bounds = sel.getBounds()
-            val pillX = (center.x - 110f).coerceIn(20f, 650f)
-            val pillY = (bounds.top - 64f).coerceIn(70f, 1600f)
+
+            val cardWidthPx = with(density) { 264.dp.toPx() }
+            val cardHeightPx = with(density) { 44.dp.toPx() }
+            val topBarHeightPx = with(density) { 72.dp.toPx() }
+            val bottomBarHeightPx = with(density) { 80.dp.toPx() }
+
+            val screenCenter = canvasToScreen(Offset(center.x, center.y))
+            val halfW = (bounds.width / 2f) * sel.scale * uiState.zoomScale
+            val halfH = (bounds.height / 2f) * sel.scale * uiState.zoomScale
+            val rad = Math.toRadians(sel.rotation.toDouble())
+            val cosA = abs(cos(rad)).toFloat()
+            val sinA = abs(sin(rad)).toFloat()
+            val visualHalfH = halfW * sinA + halfH * cosA
+
+            val topOfElement = screenCenter.y - visualHalfH
+            val selectionTop = topOfElement - (56f * sel.scale * uiState.zoomScale).coerceAtLeast(36f)
+
+            var targetX = screenCenter.x - cardWidthPx / 2f
+            var targetY = selectionTop - cardHeightPx - 10f
+
+            // If too close to top bar or off top screen, position nicely below the element
+            if (targetY < topBarHeightPx + 10f) {
+                targetY = screenCenter.y + visualHalfH + 16f
+            }
+
+            targetX = targetX.coerceIn(12f, (screenWidthPx - cardWidthPx - 12f).coerceAtLeast(12f))
+            targetY = targetY.coerceIn(topBarHeightPx + 8f, (screenHeightPx - bottomBarHeightPx - cardHeightPx - 8f).coerceAtLeast(topBarHeightPx + 8f))
 
             Surface(
                 modifier = Modifier
-                    .offset(pillX.dp, pillY.dp)
+                    .offset { IntOffset(targetX.roundToInt(), targetY.roundToInt()) }
                     .shadow(10.dp, RoundedCornerShape(22.dp)),
                 shape = RoundedCornerShape(22.dp),
                 color = Color(0xFF222222)
@@ -289,6 +509,12 @@ fun WhiteboardScreen(
                     modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
+                    IconButton(
+                        onClick = { viewModel.openEditDialogForSelected() },
+                        modifier = Modifier.size(36.dp)
+                    ) {
+                        Icon(Icons.Default.Palette, contentDescription = "Edit Color / Style", tint = Color(0xFF00E676), modifier = Modifier.size(18.dp))
+                    }
                     IconButton(
                         onClick = { viewModel.deleteSelectedElement() },
                         modifier = Modifier.size(36.dp)
@@ -323,11 +549,54 @@ fun WhiteboardScreen(
             }
         }
 
+        // Floating Pan & Zoom Controls Chip
+        Surface(
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .padding(top = 78.dp, end = 12.dp)
+                .shadow(6.dp, RoundedCornerShape(16.dp)),
+            shape = RoundedCornerShape(16.dp),
+            color = Color(0xEEFFFFFF)
+        ) {
+            Row(
+                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                IconButton(
+                    onClick = { viewModel.zoomCanvas(0.85f) },
+                    modifier = Modifier.size(30.dp)
+                ) {
+                    Icon(Icons.Default.Remove, contentDescription = "Zoom Out", modifier = Modifier.size(16.dp), tint = Color.DarkGray)
+                }
+                Text(
+                    text = "${(uiState.zoomScale * 100).roundToInt()}%",
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color(0xFF1E293B),
+                    modifier = Modifier.clickable { viewModel.resetPanZoom() }.padding(horizontal = 4.dp)
+                )
+                IconButton(
+                    onClick = { viewModel.zoomCanvas(1.18f) },
+                    modifier = Modifier.size(30.dp)
+                ) {
+                    Icon(Icons.Default.Add, contentDescription = "Zoom In", modifier = Modifier.size(16.dp), tint = Color.DarkGray)
+                }
+                if (uiState.zoomScale != 1f || uiState.panOffset != Offset.Zero) {
+                    IconButton(
+                        onClick = { viewModel.resetPanZoom() },
+                        modifier = Modifier.size(28.dp)
+                    ) {
+                        Icon(Icons.Default.FitScreen, contentDescription = "Reset Pan & Zoom", modifier = Modifier.size(15.dp), tint = Color(0xFF2563EB))
+                    }
+                }
+            }
+        }
+
         // 2. RULER OVERLAY (when enabled)
         if (uiState.isRulerVisible) {
             Box(
                 modifier = Modifier
-                    .offset(rulerPosition.x.dp, rulerPosition.y.dp)
+                    .offset { IntOffset(rulerPosition.x.roundToInt(), rulerPosition.y.roundToInt()) }
                     .width(320.dp)
                     .height(64.dp)
                     .clip(RoundedCornerShape(8.dp))
@@ -338,8 +607,8 @@ fun WhiteboardScreen(
                         detectDragGestures { change, dragAmount ->
                             change.consume()
                             rulerPosition = Offset(
-                                rulerPosition.x + dragAmount.x / density,
-                                rulerPosition.y + dragAmount.y / density
+                                rulerPosition.x + dragAmount.x,
+                                rulerPosition.y + dragAmount.y
                             )
                         }
                     }
@@ -513,6 +782,13 @@ fun WhiteboardScreen(
             }
         }
 
+        // AdMob Banner Ad for maximum revenue on Whiteboard Screen
+        BannerAdView(
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .padding(bottom = if (!uiState.isToolbarCollapsed) 84.dp else 16.dp)
+        )
+
         // 4. BOTTOM TOOLBAR
         AnimatedVisibility(
             visible = !uiState.isToolbarCollapsed,
@@ -563,21 +839,16 @@ fun WhiteboardScreen(
                                                 viewModel.saveCurrentBoard()
                                             }
                                             ToolType.WEB_IMAGE -> {
-                                                Toast.makeText(context, "Enter image URL or select from gallery", Toast.LENGTH_SHORT).show()
-                                                photoPickerLauncher.launch(
-                                                    PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
-                                                )
+                                                viewModel.selectTool(ToolType.WEB_IMAGE)
                                             }
                                             ToolType.CAMERA -> {
-                                                photoPickerLauncher.launch(
-                                                    PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
-                                                )
+                                                safeLaunchCamera(CameraTarget.REGULAR)
                                             }
                                             ToolType.OCR -> {
-                                                Toast.makeText(context, "OCR: Recognizing handwriting...", Toast.LENGTH_SHORT).show()
+                                                viewModel.selectTool(ToolType.OCR)
                                             }
                                             ToolType.IMPORT_PDF -> {
-                                                Toast.makeText(context, "Select PDF document to import", Toast.LENGTH_SHORT).show()
+                                                pdfPickerLauncher.launch(arrayOf("application/pdf"))
                                             }
                                             else -> {
                                                 viewModel.selectTool(tool)
@@ -721,6 +992,74 @@ fun WhiteboardScreen(
             onStickerSelected = { id, title ->
                 viewModel.addStickerElement(id, title)
             },
+            onDismiss = { viewModel.dismissAllDialogs() }
+        )
+    }
+
+    if (uiState.showWebImageDialog) {
+        WebImageDialog(
+            onUrlConfirmed = { url ->
+                viewModel.addWebImage(url)
+            },
+            onDismiss = { viewModel.dismissAllDialogs() }
+        )
+    }
+
+    if (uiState.showOcrDialog) {
+        OcrDialog(
+            extractedText = uiState.ocrExtractedText,
+            isProcessing = uiState.isOcrProcessing,
+            onScanGallery = {
+                val activity = AdManager.findActivity(context)
+                if (activity != null) {
+                    RewardedAdManager.showAd(
+                        activity = activity,
+                        onUserEarnedReward = {
+                            ocrPhotoPickerLauncher.launch(
+                                PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                            )
+                        },
+                        onAdClosed = {
+                            ocrPhotoPickerLauncher.launch(
+                                PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                            )
+                        }
+                    )
+                } else {
+                    ocrPhotoPickerLauncher.launch(
+                        PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                    )
+                }
+            },
+            onScanCamera = {
+                val activity = AdManager.findActivity(context)
+                if (activity != null) {
+                    RewardedAdManager.showAd(
+                        activity = activity,
+                        onUserEarnedReward = {
+                            safeLaunchCamera(CameraTarget.OCR)
+                        },
+                        onAdClosed = {
+                            safeLaunchCamera(CameraTarget.OCR)
+                        }
+                    )
+                } else {
+                    safeLaunchCamera(CameraTarget.OCR)
+                }
+            },
+            onInsertText = { text ->
+                viewModel.addOcrTextToCanvas(text)
+            },
+            onDismiss = { viewModel.dismissAllDialogs() }
+        )
+    }
+
+    if (uiState.showElementEditDialog) {
+        val selected = uiState.pages.getOrNull(uiState.currentPageIndex)?.elements?.find { it.id == uiState.selectedElementId }
+        ElementEditDialog(
+            selectedElement = selected,
+            onColorSelected = { color -> viewModel.updateSelectedElementColor(color) },
+            onFillToggle = { viewModel.toggleSelectedShapeFill() },
             onDismiss = { viewModel.dismissAllDialogs() }
         )
     }

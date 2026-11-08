@@ -1,0 +1,390 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Privacy Policy - WhiteBoard</title>
+    <style>
+        :root {
+            --primary-color: #2F80ED;
+            --primary-dark: #1C54A8;
+            --text-main: #212529;
+            --text-secondary: #5F6368;
+            --bg-body: #F8F9FA;
+            --bg-card: #FFFFFF;
+            --border-color: #E0E0E0;
+            --badge-bg: #E8F0FE;
+            --badge-text: #1967D2;
+            --table-header: #F1F3F4;
+        }
+
+        @media (prefers-color-scheme: dark) {
+            :root {
+                --primary-color: #4285F4;
+                --primary-dark: #8AB4F8;
+                --text-main: #E8EAED;
+                --text-secondary: #9AA0A6;
+                --bg-body: #121212;
+                --bg-card: #1E1E1E;
+                --border-color: #2D2D2D;
+                --badge-bg: #1A2733;
+                --badge-text: #8AB4F8;
+                --table-header: #282828;
+            }
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: var(--bg-body);
+            color: var(--text-main);
+            line-height: 1.65;
+            padding: 24px 16px;
+        }
+
+        .container {
+            max-width: 860px;
+            margin: 0 auto;
+            background-color: var(--bg-card);
+            border-radius: 16px;
+            border: 1px solid var(--border-color);
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05);
+            padding: 40px;
+        }
+
+        @media (max-width: 600px) {
+            .container {
+                padding: 24px 16px;
+                border-radius: 12px;
+            }
+        }
+
+        .header {
+            border-bottom: 2px solid var(--border-color);
+            padding-bottom: 24px;
+            margin-bottom: 32px;
+        }
+
+        .app-badge {
+            display: inline-block;
+            background-color: var(--badge-bg);
+            color: var(--badge-text);
+            font-size: 13px;
+            font-weight: 600;
+            padding: 4px 12px;
+            border-radius: 20px;
+            margin-bottom: 12px;
+        }
+
+        h1 {
+            font-size: 28px;
+            font-weight: 700;
+            color: var(--text-main);
+            margin-bottom: 10px;
+        }
+
+        .meta-info {
+            font-size: 14px;
+            color: var(--text-secondary);
+        }
+
+        .toc {
+            background-color: var(--bg-body);
+            border: 1px solid var(--border-color);
+            border-radius: 10px;
+            padding: 20px;
+            margin-bottom: 36px;
+        }
+
+        .toc h3 {
+            font-size: 16px;
+            margin-bottom: 12px;
+            color: var(--text-main);
+        }
+
+        .toc ol {
+            padding-left: 20px;
+        }
+
+        .toc li {
+            margin-bottom: 6px;
+            font-size: 14px;
+        }
+
+        .toc a {
+            color: var(--primary-color);
+            text-decoration: none;
+        }
+
+        .toc a:hover {
+            text-decoration: underline;
+        }
+
+        section {
+            margin-bottom: 36px;
+        }
+
+        h2 {
+            font-size: 20px;
+            font-weight: 600;
+            color: var(--text-main);
+            margin-bottom: 14px;
+            display: flex;
+            align-items: center;
+            border-left: 4px solid var(--primary-color);
+            padding-left: 12px;
+        }
+
+        p {
+            margin-bottom: 14px;
+            color: var(--text-main);
+            font-size: 15px;
+        }
+
+        ul {
+            margin-bottom: 14px;
+            padding-left: 24px;
+        }
+
+        li {
+            margin-bottom: 8px;
+            font-size: 15px;
+            color: var(--text-main);
+        }
+
+        strong {
+            color: var(--text-main);
+        }
+
+        .highlight-box {
+            background-color: var(--badge-bg);
+            border-left: 4px solid var(--primary-color);
+            padding: 16px;
+            border-radius: 0 8px 8px 0;
+            margin-bottom: 20px;
+            font-size: 14px;
+            color: var(--text-main);
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+            font-size: 14px;
+        }
+
+        th, td {
+            border: 1px solid var(--border-color);
+            padding: 12px;
+            text-align: left;
+        }
+
+        th {
+            background-color: var(--table-header);
+            font-weight: 600;
+        }
+
+        .footer {
+            border-top: 1px solid var(--border-color);
+            padding-top: 24px;
+            margin-top: 40px;
+            text-align: center;
+            font-size: 13px;
+            color: var(--text-secondary);
+        }
+
+        a {
+            color: var(--primary-color);
+            text-decoration: none;
+        }
+
+        a:hover {
+            text-decoration: underline;
+        }
+
+        .contact-card {
+            background-color: var(--bg-body);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 20px;
+            margin-top: 16px;
+        }
+
+        .contact-card p {
+            margin-bottom: 8px;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div class="header">
+        <span class="app-badge">Official Privacy Policy</span>
+        <h1>Privacy Policy for WhiteBoard</h1>
+        <div class="meta-info">
+            <strong>Application Name:</strong> WhiteBoard<br>
+            <strong>Package Identifier:</strong> com.aistudio.whiteboard.wbdraw<br>
+            <strong>Effective Date:</strong> September 27, 2026<br>
+            <strong>Developer Contact:</strong> <a href="mailto:saiyedkhan206@gmail.com">saiyedkhan206@gmail.com</a>
+        </div>
+    </div>
+
+    <div class="highlight-box">
+        <strong>Summary for Users:</strong> WhiteBoard respects your privacy. We <strong>do not</strong> collect personal identifiable information (no name, account, email, or phone number required to use the drawing canvas). All of your boards, strokes, and sketches remain stored <strong>locally on your personal device</strong>. We integrate trusted Google Mobile Ads (AdMob) to support the app, which may collect anonymous device identifiers for advertising and fraud prevention.
+    </div>
+
+    <div class="toc">
+        <h3>Table of Contents</h3>
+        <ol>
+            <li><a href="#introduction">Introduction & Scope</a></li>
+            <li><a href="#information-we-collect">Information We Collect</a></li>
+            <li><a href="#local-data-storage">Local Storage of Your Canvas Creations</a></li>
+            <li><a href="#device-permissions">Device Permissions Used</a></li>
+            <li><a href="#third-party-services">Third-Party Services & Google AdMob</a></li>
+            <li><a href="#advertising-policy">Rewarded Ads & Personalized Advertising</a></li>
+            <li><a href="#children-privacy">Children's Privacy (COPPA & Family Policy)</a></li>
+            <li><a href="#data-retention-deletion">Data Retention and Deletion</a></li>
+            <li><a href="#security">Security of Your Information</a></li>
+            <li><a href="#policy-updates">Changes to This Privacy Policy</a></li>
+            <li><a href="#contact-us">Contact Information</a></li>
+        </ol>
+    </div>
+
+    <!-- Section 1 -->
+    <section id="introduction">
+        <h2>1. Introduction & Scope</h2>
+        <p>This Privacy Policy explains how <strong>WhiteBoard</strong> ("we", "us", or "our", package name: <code>com.aistudio.whiteboard.wbdraw</code>) handles information when you use our mobile application. By downloading, accessing, or using WhiteBoard, you acknowledge that you have read and agree to the practices described in this policy.</p>
+        <p>We are dedicated to providing a secure, creative, and private digital whiteboard experience for students, teachers, creators, and professionals worldwide.</p>
+    </section>
+
+    <!-- Section 2 -->
+    <section id="information-we-collect">
+        <h2>2. Information We Collect</h2>
+        <p>We do not require you to create an account, sign in, or provide any personal details (such as your legal name, physical address, email address, or contact number) to use WhiteBoard.</p>
+        
+        <p><strong>Automatically Collected Technical Information (Via Third-Party SDKs):</strong></p>
+        <ul>
+            <li><strong>Device Identifiers:</strong> Google Advertising ID (GAID), IP address, device model, hardware specifications, Android operating system version, and system language.</li>
+            <li><strong>App Performance and Diagnostics:</strong> Crash logs, app startup speed, and diagnostic data collected by Google Play Services to ensure application stability and reliability.</li>
+            <li><strong>Ad Interaction Metrics:</strong> Information regarding ad impressions, clicks, video completion status for rewarded ads, and fraud prevention signals processed securely by Google Mobile Ads.</li>
+        </ul>
+    </section>
+
+    <!-- Section 3 -->
+    <section id="local-data-storage">
+        <h2>3. Local Storage of Your Canvas Creations</h2>
+        <p>All drawings, notes, math formulas, chemical diagrams, sticky notes, shapes, and imported images created on the WhiteBoard canvas are stored <strong>strictly locally on your device</strong> using Android's private sandboxed SQLite database (Room Database) and local internal storage.</p>
+        <ul>
+            <li>Your boards, strokes, and sketches are <strong>never</strong> transmitted to our servers or third parties.</li>
+            <li>When you choose to export your whiteboard as a PNG image or PDF document, the file is generated locally on your device.</li>
+            <li>If you use the <em>Share</em> button, the exported file is passed directly to the app you select (e.g., Gmail, Google Drive, WhatsApp) using Android's secure <code>FileProvider</code>.</li>
+        </ul>
+    </section>
+
+    <!-- Section 4 -->
+    <section id="device-permissions">
+        <h2>4. Device Permissions Used</h2>
+        <p>WhiteBoard follows the principle of least privilege, requesting only the permissions strictly necessary for its features:</p>
+        <table>
+            <thead>
+                <tr>
+                    <th>Permission</th>
+                    <th>Type</th>
+                    <th>Purpose & Necessity</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td><code>android.permission.INTERNET</code></td>
+                    <td>Normal (Install-Time)</td>
+                    <td>Required to communicate with Google Mobile Ads servers to request, load, and display advertisement banners and rewarded video ads.</td>
+                </tr>
+                <tr>
+                    <td><strong>Android Photo Picker</strong> (System API)</td>
+                    <td>Zero-Permission</td>
+                    <td>Allows you to insert images or photos into your canvas. The app uses Android's privacy-safe Photo Picker (<code>PickVisualMedia</code>), meaning our app has <em>zero</em> broad access to your photo library or device storage. Only the exact media file you select is provided to the app.</td>
+                </tr>
+            </tbody>
+        </table>
+    </section>
+
+    <!-- Section 5 -->
+    <section id="third-party-services">
+        <h2>5. Third-Party Services & Google AdMob</h2>
+        <p>Our application utilizes reputable third-party services provided by Google LLC. These third parties may collect and process information in accordance with their respective privacy policies:</p>
+        <ul>
+            <li><strong>Google Mobile Ads (AdMob):</strong> Used to deliver non-intrusive advertisements and user-initiated rewarded ads. AdMob uses device identifiers (such as Google Advertising ID) to serve relevant ads, limit the frequency of ads, and prevent fraudulent ad traffic.<br>
+            Privacy Policy: <a href="https://policies.google.com/privacy" target="_blank" rel="noopener">https://policies.google.com/privacy</a><br>
+            How Google uses information from sites or apps: <a href="https://policies.google.com/technologies/partner-sites" target="_blank" rel="noopener">https://policies.google.com/technologies/partner-sites</a></li>
+            <li><strong>Google Play Services:</strong> Provides core platform APIs, security verification, and diagnostic services on Android.<br>
+            Terms of Service: <a href="https://policies.google.com/terms" target="_blank" rel="noopener">https://policies.google.com/terms</a></li>
+        </ul>
+    </section>
+
+    <!-- Section 6 -->
+    <section id="advertising-policy">
+        <h2>6. Rewarded Ads & Personalized Advertising</h2>
+        <p>WhiteBoard provides optional <strong>Rewarded Ads</strong>. Users may voluntarily elect to watch a short sponsored video ad to earn rewards, such as in-app reward points or unlocking VIP canvas tools (e.g., golden styluses, neon pens, blueprint canvas textures). Participation is completely voluntary.</p>
+        <p><strong>Opting Out of Personalized Advertising:</strong></p>
+        <p>You have full control over personalized ads on your Android device. You can reset or delete your advertising identifier at any time:</p>
+        <ol>
+            <li>Open the <strong>Settings</strong> app on your Android device.</li>
+            <li>Navigate to <strong>Google</strong> &rarr; <strong>Ads</strong> (or <strong>Privacy</strong> &rarr; <strong>Ads</strong>).</li>
+            <li>Tap <strong>Delete advertising ID</strong> or <strong>Reset advertising ID</strong>.</li>
+        </ol>
+    </section>
+
+    <!-- Section 7 -->
+    <section id="children-privacy">
+        <h2>7. Children's Privacy (COPPA & Families Policy)</h2>
+        <p>WhiteBoard is designed for a general audience. We do not knowingly collect, store, or solicit personally identifiable information from children under the age of 13 (or under 16 in the European Union), in accordance with the Children's Online Privacy Protection Act (COPPA) and Google Play's Families Policy.</p>
+        <p>If you are a parent or guardian and believe that your child has provided us with personal information, please contact us immediately at <a href="mailto:saiyedkhan206@gmail.com">saiyedkhan206@gmail.com</a>. We will promptly investigate and take necessary measures to remove such information.</p>
+    </section>
+
+    <!-- Section 8 -->
+    <section id="data-retention-deletion">
+        <h2>8. Data Retention and Deletion</h2>
+        <p>Because all your whiteboard contents are stored on your local device:</p>
+        <ul>
+            <li><strong>Individual Board Deletion:</strong> You can delete any individual board at any time from the app's <em>History</em> dialog. Deleting a board permanently removes it from your device.</li>
+            <li><strong>Complete Data Erasure:</strong> To remove all local boards, preferences, and cached assets, you can go to <strong>Android Settings &rarr; Apps &rarr; WhiteBoard &rarr; Storage & Cache &rarr; Clear Storage</strong>.</li>
+            <li><strong>Uninstallation:</strong> Uninstalling the WhiteBoard application completely and irreversibly removes all local databases, saved boards, and app cache files.</li>
+        </ul>
+    </section>
+
+    <!-- Section 9 -->
+    <section id="security">
+        <h2>9. Security of Your Information</h2>
+        <p>We value your trust and implement industry-standard security safeguards. Your canvas files and settings are protected by Android's application sandbox architecture, preventing other apps from accessing your private whiteboard data. Network transmissions initiated by Google Mobile Ads and Play Services use secure, encrypted Transport Layer Security (TLS/HTTPS) protocols.</p>
+    </section>
+
+    <!-- Section 10 -->
+    <section id="policy-updates">
+        <h2>10. Changes to This Privacy Policy</h2>
+        <p>We may update this Privacy Policy from time to time to reflect changes in our legal obligations, regulatory standards, or app features. When changes are made, we will update the "Effective Date" at the top of this document. We encourage you to review this Privacy Policy periodically. Significant changes will also be highlighted within the in-app Privacy Policy dialog.</p>
+    </section>
+
+    <!-- Section 11 -->
+    <section id="contact-us">
+        <h2>11. Contact Information</h2>
+        <p>If you have any questions, concerns, comments, or data privacy inquiries regarding this Privacy Policy or WhiteBoard, please reach out to us:</p>
+        <div class="contact-card">
+            <p><strong>Developer:</strong> WhiteBoard Team</p>
+            <p><strong>Email Address:</strong> <a href="mailto:saiyedkhan206@gmail.com">saiyedkhan206@gmail.com</a></p>
+            <p><strong>Package Name:</strong> <code>com.aistudio.whiteboard.wbdraw</code></p>
+            <p><strong>Response Time:</strong> We aim to review and respond to inquiries within 48 to 72 hours.</p>
+        </div>
+    </section>
+
+    <div class="footer">
+        &copy; 2026 WhiteBoard. All rights reserved. Compliant with Google Play Developer Program Policies.
+    </div>
+</div>
+
+</body>
+</html>

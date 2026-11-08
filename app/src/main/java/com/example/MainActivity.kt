@@ -31,8 +31,11 @@ class MainActivity : ComponentActivity() {
         val database = WhiteboardDatabase.getDatabase(this)
         val repository = BoardRepository(database.boardDao())
 
-        // Initialize Google Mobile Ads and preload rewarded test ad
-        RewardedAdManager.initialize(this)
+        // Initialize Google Mobile Ads (Banner, Interstitial, Rewarded)
+        com.example.ui.ads.AdManager.initialize(this)
+
+        // Initialize Google ML Kit Digital Ink Recognition & OCR
+        com.example.ui.whiteboard.ml.MlKitManager.initialize(this)
 
         setContent {
             MyApplicationTheme {
@@ -46,11 +49,15 @@ class MainActivity : ComponentActivity() {
                                 repository = repository,
                                 onNewBoard = {
                                     whiteboardViewModel.loadBoard(0L)
-                                    currentScreen = AppScreen.Whiteboard(0L)
+                                    com.example.ui.ads.AdManager.showInterstitial(this) {
+                                        currentScreen = AppScreen.Whiteboard(0L)
+                                    }
                                 },
                                 onOpenBoard = { boardId ->
                                     whiteboardViewModel.loadBoard(boardId)
-                                    currentScreen = AppScreen.Whiteboard(boardId)
+                                    com.example.ui.ads.AdManager.showInterstitial(this) {
+                                        currentScreen = AppScreen.Whiteboard(boardId)
+                                    }
                                 }
                             )
                         }
@@ -58,7 +65,9 @@ class MainActivity : ComponentActivity() {
                             WhiteboardScreen(
                                 viewModel = whiteboardViewModel,
                                 onNavigateBack = {
-                                    currentScreen = AppScreen.Home
+                                    com.example.ui.ads.AdManager.showInterstitial(this) {
+                                        currentScreen = AppScreen.Home
+                                    }
                                 }
                             )
                         }
