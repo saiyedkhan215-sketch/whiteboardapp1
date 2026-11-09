@@ -2,11 +2,9 @@ package com.example.ui.whiteboard.ml
 
 import android.content.Context
 import android.graphics.Bitmap
-import com.example.data.model.PointF
 import android.util.Log
-import com.example.data.model.CanvasElement
+import com.example.data.model.PointF
 import com.example.data.model.ShapeType
-import com.google.android.gms.tasks.Task
 import com.google.mlkit.common.model.DownloadConditions
 import com.google.mlkit.common.model.RemoteModelManager
 import com.google.mlkit.vision.common.InputImage
@@ -16,6 +14,7 @@ import com.google.mlkit.vision.text.latin.TextRecognizerOptions
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.coroutines.resume
 
 object MlKitManager {
@@ -25,8 +24,17 @@ object MlKitManager {
     private var textRecognizer: DigitalInkRecognizer? = null
     private var ocrRecognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
 
+    private var shapesModel: DigitalInkRecognitionModel? = null
+    private var textModel: DigitalInkRecognitionModel? = null
+
+    @Volatile
     private var isShapesModelDownloaded = false
+
+    @Volatile
     private var isTextModelDownloaded = false
+
+    @Volatile
+    private var isDownloading = false
 
     fun initialize(context: Context) {
         val modelManager = RemoteModelManager.getInstance()
@@ -34,56 +42,103 @@ object MlKitManager {
         // 1. Setup Shapes Model (zxx-Zsym-x-shapes)
         val shapesModelId = DigitalInkRecognitionModelIdentifier.fromLanguageTag("zxx-Zsym-x-shapes")
         if (shapesModelId != null) {
-            val shapesModel = DigitalInkRecognitionModel.builder(shapesModelId).build()
-            val options = DigitalInkRecognizerOptions.builder(shapesModel).build()
+            val sm = DigitalInkRecognitionModel.builder(shapesModelId).build()
+            shapesModel = sm
+            val options = DigitalInkRecognizerOptions.builder(sm).build()
             shapesRecognizer = DigitalInkRecognition.getClient(options)
 
-            modelManager.isModelDownloaded(shapesModel)
+            modelManager.isModelDownloaded(sm)
                 .addOnSuccessListener { downloaded ->
                     isShapesModelDownloaded = downloaded
                     if (!downloaded) {
-                        modelManager.download(shapesModel, DownloadConditions.Builder().build())
-                            .addOnSuccessListener {
-                                isShapesModelDownloaded = true
-                                Log.d(TAG, "Shapes model downloaded successfully")
-                            }
-                            .addOnFailureListener { e ->
-                                Log.w(TAG, "Shapes model download failed, will fallback to geometric classifier", e)
-                            }
+                        triggerModelDownload()
+                    } else {
+                        Log.d(TAG, "Shapes model already downloaded")
                     }
+                }
+                .addOnFailureListener { e ->
+                    Log.w(TAG, "Failed checking shapes model status", e)
                 }
         }
 
         // 2. Setup English Text Model (en) for letters, digits, words, symbols
         val textModelId = DigitalInkRecognitionModelIdentifier.fromLanguageTag("en")
         if (textModelId != null) {
-            val textModel = DigitalInkRecognitionModel.builder(textModelId).build()
-            val options = DigitalInkRecognizerOptions.builder(textModel).build()
+            val tm = DigitalInkRecognitionModel.builder(textModelId).build()
+            textModel = tm
+            val options = DigitalInkRecognizerOptions.builder(tm).build()
             textRecognizer = DigitalInkRecognition.getClient(options)
 
-            modelManager.isModelDownloaded(textModel)
+            modelManager.isModelDownloaded(tm)
                 .addOnSuccessListener { downloaded ->
                     isTextModelDownloaded = downloaded
                     if (!downloaded) {
-                        modelManager.download(textModel, DownloadConditions.Builder().build())
-                            .addOnSuccessListener {
-                                isTextModelDownloaded = true
-                                Log.d(TAG, "Text ink model downloaded successfully")
-                            }
-                            .addOnFailureListener { e ->
-                                Log.w(TAG, "Text ink model download failed", e)
-                            }
+                        triggerModelDownload()
+                    } else {
+                        Log.d(TAG, "Text model already downloaded")
                     }
+                }
+                .addOnFailureListener { e ->
+                    Log.w(TAG, "Failed checking text model status", e)
                 }
         }
     }
 
     /**
-     * Recognize strokes using ML Kit Digital Ink Recognition.
-     * Returns recognized shape or text string candidate, or null if unconfident/unavailable.
+     * Trigger background download of models using lenient conditions so it works on any network.
+     */
+    fun triggerModelDownload() {
+        if (isDownloading) return
+        isDownloading = true
+
+        val modelManager = RemoteModelManager.getInstance()
+        val conditions = DownloadConditions.Builder().build()
+
+        shapesModel?.let { sm ->
+            if (!isShapesModelDownloaded) {
+                modelManager.download(sm, conditions)
+                    .addOnSuccessListener {
+                        isShapesModelDownloaded = true
+                        isDownloading = false
+                        Log.d(TAG, "Shapes model downloaded successfully")
+                    }
+                    .addOnFailureListener { e ->
+                        isDownloading = false
+                        Log.w(TAG, "Shapes model download failed; will use fast geometric classifier", e)
+                    }
+            }
+        }
+
+        textModel?.let { tm ->
+            if (!isTextModelDownloaded) {
+                modelManager.download(tm, conditions)
+                    .addOnSuccessListener {
+                        isTextModelDownloaded = true
+                        isDownloading = false
+                        Log.d(TAG, "Text ink model downloaded successfully")
+                    }
+                    .addOnFailureListener { e ->
+                        isDownloading = false
+                        Log.w(TAG, "Text ink model download failed; will use fast geometric classifier", e)
+                    }
+            }
+        }
+    }
+
+    /**
+     * Recognize strokes using ML Kit Digital Ink Recognition with strict timeouts.
+     * If models are not yet downloaded or API fails, returns null immediately so the app
+     * falls back to the instantaneous SmartShapeRecognizer without blocking or hanging.
      */
     suspend fun recognizeInk(points: List<PointF>): Pair<String, Float>? = withContext(Dispatchers.Default) {
         if (points.size < 3) return@withContext null
+
+        // If neither model is downloaded yet, trigger background download and return null immediately.
+        // This ensures ZERO lag or hang for the user!
+        if (!isShapesModelDownloaded && !isTextModelDownloaded) {
+            triggerModelDownload()
+            return@withContext null
+        }
 
         val inkBuilder = Ink.builder()
         val strokeBuilder = Ink.Stroke.builder()
@@ -95,21 +150,29 @@ object MlKitManager {
         inkBuilder.addStroke(strokeBuilder.build())
         val ink = inkBuilder.build()
 
-        // 1. Try shapes recognizer first
+        // 1. Try shapes recognizer first if shapes model is ready
         val shapesClient = shapesRecognizer
-        if (shapesClient != null) {
-            val shapeResult = recognizeWithClient(shapesClient, ink)
-            if (shapeResult != null && shapeResult.second >= 0.25f) {
-                return@withContext shapeResult
+        if (shapesClient != null && isShapesModelDownloaded) {
+            try {
+                val shapeResult = recognizeWithClient(shapesClient, ink)
+                if (shapeResult != null && shapeResult.second >= 0.25f) {
+                    return@withContext shapeResult
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "Shapes recognition error", e)
             }
         }
 
-        // 2. Try text recognizer if shapes didn't match
+        // 2. Try text recognizer if shapes didn't match and text model is ready
         val textClient = textRecognizer
-        if (textClient != null) {
-            val textResult = recognizeWithClient(textClient, ink)
-            if (textResult != null) {
-                return@withContext textResult
+        if (textClient != null && isTextModelDownloaded) {
+            try {
+                val textResult = recognizeWithClient(textClient, ink)
+                if (textResult != null) {
+                    return@withContext textResult
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "Text recognition error", e)
             }
         }
 
@@ -117,20 +180,22 @@ object MlKitManager {
     }
 
     private suspend fun recognizeWithClient(client: DigitalInkRecognizer, ink: Ink): Pair<String, Float>? =
-        suspendCancellableCoroutine { continuation ->
-            client.recognize(ink)
-                .addOnSuccessListener { result ->
-                    val top = result.candidates.firstOrNull()
-                    if (top != null) {
-                        val score = top.score ?: 1.0f
-                        continuation.resume(Pair(top.text, score))
-                    } else {
-                        continuation.resume(null)
+        withTimeoutOrNull(800L) {
+            suspendCancellableCoroutine { continuation ->
+                client.recognize(ink)
+                    .addOnSuccessListener { result ->
+                        val top = result.candidates.firstOrNull()
+                        if (top != null) {
+                            val score = top.score ?: 1.0f
+                            if (continuation.isActive) continuation.resume(Pair(top.text, score))
+                        } else {
+                            if (continuation.isActive) continuation.resume(null)
+                        }
                     }
-                }
-                .addOnFailureListener {
-                    continuation.resume(null)
-                }
+                    .addOnFailureListener {
+                        if (continuation.isActive) continuation.resume(null)
+                    }
+            }
         }
 
     /**
@@ -169,11 +234,11 @@ object MlKitManager {
             val inputImage = InputImage.fromBitmap(bitmap, 0)
             ocrRecognizer.process(inputImage)
                 .addOnSuccessListener { visionText ->
-                    continuation.resume(visionText.text)
+                    if (continuation.isActive) continuation.resume(visionText.text)
                 }
                 .addOnFailureListener { e ->
                     Log.e(TAG, "OCR Recognition error", e)
-                    continuation.resume("")
+                    if (continuation.isActive) continuation.resume("")
                 }
         }
     }

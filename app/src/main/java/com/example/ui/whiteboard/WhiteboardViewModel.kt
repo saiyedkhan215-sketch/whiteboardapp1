@@ -353,48 +353,50 @@ class WhiteboardViewModel(application: Application) : AndroidViewModel(applicati
                     viewModelScope.launch {
                         var recognizedElement: CanvasElement? = null
 
-                        // 1. Google ML Kit Digital Ink Recognition API
+                        // 1. Google ML Kit Digital Ink Recognition API (with fast timeout)
                         try {
-                            val mlResult = com.example.ui.whiteboard.ml.MlKitManager.recognizeInk(pts)
-                            if (mlResult != null) {
-                                val candidate = mlResult.first
-                                val shapeType = com.example.ui.whiteboard.ml.MlKitManager.mapCandidateToShapeType(candidate)
-                                val minX = pts.minOf { it.x }
-                                val maxX = pts.maxOf { it.x }
-                                val minY = pts.minOf { it.y }
-                                val maxY = pts.maxOf { it.y }
-                                val w = maxX - minX
-                                val h = maxY - minY
+                            recognizedElement = kotlinx.coroutines.withTimeoutOrNull(1000L) {
+                                val mlResult = com.example.ui.whiteboard.ml.MlKitManager.recognizeInk(pts)
+                                if (mlResult != null) {
+                                    val candidate = mlResult.first
+                                    val shapeType = com.example.ui.whiteboard.ml.MlKitManager.mapCandidateToShapeType(candidate)
+                                    val minX = pts.minOf { it.x }
+                                    val maxX = pts.maxOf { it.x }
+                                    val minY = pts.minOf { it.y }
+                                    val maxY = pts.maxOf { it.y }
+                                    val w = maxX - minX
+                                    val h = maxY - minY
 
-                                if (shapeType != null) {
-                                    val sEndX = if (shapeType == ShapeType.SQUARE || shapeType == ShapeType.CIRCLE) minX + maxOf(w, h) else maxX
-                                    val sEndY = if (shapeType == ShapeType.SQUARE || shapeType == ShapeType.CIRCLE) minY + maxOf(w, h) else maxY
-                                    recognizedElement = CanvasElement.Shape(
-                                        id = "smart_ml_${System.currentTimeMillis()}",
-                                        layerId = layerId,
-                                        shapeType = shapeType,
-                                        startX = minX,
-                                        startY = minY,
-                                        endX = sEndX,
-                                        endY = sEndY,
-                                        colorArgb = colorArgb,
-                                        strokeWidth = strokeWidth
-                                    )
-                                } else if (candidate.isNotBlank() && candidate.length <= 20) {
-                                    val fontSize = maxOf(32f, minOf(96f, h * 0.9f))
-                                    recognizedElement = CanvasElement.Text(
-                                        id = "smart_txt_${System.currentTimeMillis()}",
-                                        layerId = layerId,
-                                        text = candidate,
-                                        x = minX,
-                                        y = maxY,
-                                        colorArgb = colorArgb,
-                                        fontSize = fontSize
-                                    )
-                                }
+                                    if (shapeType != null) {
+                                        val sEndX = if (shapeType == ShapeType.SQUARE || shapeType == ShapeType.CIRCLE) minX + maxOf(w, h) else maxX
+                                        val sEndY = if (shapeType == ShapeType.SQUARE || shapeType == ShapeType.CIRCLE) minY + maxOf(w, h) else maxY
+                                        CanvasElement.Shape(
+                                            id = "smart_ml_${System.currentTimeMillis()}",
+                                            layerId = layerId,
+                                            shapeType = shapeType,
+                                            startX = minX,
+                                            startY = minY,
+                                            endX = sEndX,
+                                            endY = sEndY,
+                                            colorArgb = colorArgb,
+                                            strokeWidth = strokeWidth
+                                        )
+                                    } else if (candidate.isNotBlank() && candidate.length <= 20) {
+                                        val fontSize = maxOf(32f, minOf(96f, h * 0.9f))
+                                        CanvasElement.Text(
+                                            id = "smart_txt_${System.currentTimeMillis()}",
+                                            layerId = layerId,
+                                            text = candidate,
+                                            x = minX,
+                                            y = maxY,
+                                            colorArgb = colorArgb,
+                                            fontSize = fontSize
+                                        )
+                                    } else null
+                                } else null
                             }
                         } catch (e: Exception) {
-                            Log.w("WhiteboardViewModel", "ML Kit Ink recognition error", e)
+                            Log.w("WhiteboardViewModel", "ML Kit Ink recognition error or timeout", e)
                         }
 
                         // 2. Fallback to geometric shape & symbol recognizer
@@ -403,8 +405,9 @@ class WhiteboardViewModel(application: Application) : AndroidViewModel(applicati
                         }
 
                         // 3. Fallback to regular stroke
-                        if (recognizedElement != null) {
-                            addElementToCurrentPage(recognizedElement)
+                        val finalElement = recognizedElement
+                        if (finalElement != null) {
+                            addElementToCurrentPage(finalElement)
                         } else {
                             val stroke = CanvasElement.Stroke(
                                 id = "stroke_${System.currentTimeMillis()}",
