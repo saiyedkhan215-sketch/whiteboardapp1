@@ -19,7 +19,7 @@ abstract class WhiteboardDatabase : RoomDatabase() {
                     context.applicationContext,
                     WhiteboardDatabase::class.java,
                     "whiteboard_database"
-                ).fallbackToDestructiveMigration().build()
+                ).fallbackToDestructiveMigration(dropAllTables = true).build()
                 INSTANCE = instance
                 instance
             }

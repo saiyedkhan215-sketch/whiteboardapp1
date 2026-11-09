@@ -2261,7 +2261,7 @@ fun ElementEditDialog(
                     }
                 }
 
-                if (isShape && selectedElement is CanvasElement.Shape) {
+                if (selectedElement is CanvasElement.Shape) {
                     Spacer(Modifier.height(12.dp))
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -2389,7 +2389,7 @@ fun ElementEditDialog(
                     ) {
                         Text("Apply to Entire Shape", fontSize = 12.sp)
                     }
-                } else if (isText && selectedElement is CanvasElement.Text) {
+                } else if (selectedElement is CanvasElement.Text) {
                     Spacer(Modifier.height(12.dp))
 
                     // Text Animation Controls

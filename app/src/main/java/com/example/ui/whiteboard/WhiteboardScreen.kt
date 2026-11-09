@@ -21,6 +21,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.HelpOutline
 import androidx.compose.material.icons.automirrored.filled.Redo
 import androidx.compose.material.icons.automirrored.filled.Undo
 import androidx.compose.material.icons.filled.*
@@ -1333,7 +1334,7 @@ fun ToolbarItem(
             ToolType.LASSO -> Icons.Default.Gesture
             ToolType.HAND_PAN -> Icons.Default.PanTool
             ToolType.CUSTOMIZE -> Icons.Default.Settings
-            ToolType.HELP -> Icons.Default.HelpOutline
+            ToolType.HELP -> Icons.AutoMirrored.Filled.HelpOutline
         }
 
         Icon(
