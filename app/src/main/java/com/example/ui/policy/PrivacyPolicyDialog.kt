@@ -94,7 +94,7 @@ fun PrivacyPolicyDialog(
                                 fontWeight = FontWeight.Bold
                             )
                             Text(
-                                text = "WhiteBoard • v1.0",
+                                text = "WhiteBoard • v1.1",
                                 color = Color.Gray,
                                 fontSize = 12.sp
                             )
