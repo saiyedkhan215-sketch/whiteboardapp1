@@ -11,14 +11,30 @@ import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.digitalink.recognition.*
 import com.google.mlkit.vision.text.TextRecognition
 import com.google.mlkit.vision.text.latin.TextRecognizerOptions
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.coroutines.resume
 
+enum class SmartModelStatus {
+    IDLE,
+    LOADING,
+    READY,
+    OFFLINE_FALLBACK
+}
+
 object MlKitManager {
     private const val TAG = "MlKitManager"
+
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     private var shapesRecognizer: DigitalInkRecognizer? = null
     private var textRecognizer: DigitalInkRecognizer? = null
@@ -41,6 +57,12 @@ object MlKitManager {
     @Volatile
     private var isDownloading = false
 
+    private val _smartModelStatus = MutableStateFlow(SmartModelStatus.IDLE)
+    val smartModelStatus: StateFlow<SmartModelStatus> = _smartModelStatus.asStateFlow()
+
+    private val _smartStatusMessage = MutableStateFlow("Preparing smart shape & text recognition...")
+    val smartStatusMessage: StateFlow<String> = _smartStatusMessage.asStateFlow()
+
     fun initialize(context: Context) {
         if (isInitialized) return
         isInitialized = true
@@ -59,10 +81,11 @@ object MlKitManager {
                 modelManager.isModelDownloaded(sm)
                     .addOnSuccessListener { downloaded ->
                         isShapesModelDownloaded = downloaded
-                        if (!downloaded) {
-                            triggerModelDownload()
-                        } else {
+                        if (downloaded) {
+                            updateReadyStatusIfApplicable()
                             Log.d(TAG, "Shapes model already downloaded")
+                        } else {
+                            triggerModelDownload()
                         }
                     }
                     .addOnFailureListener { e ->
@@ -81,10 +104,11 @@ object MlKitManager {
                 modelManager.isModelDownloaded(tm)
                     .addOnSuccessListener { downloaded ->
                         isTextModelDownloaded = downloaded
-                        if (!downloaded) {
-                            triggerModelDownload()
-                        } else {
+                        if (downloaded) {
+                            updateReadyStatusIfApplicable()
                             Log.d(TAG, "Text model already downloaded")
+                        } else {
+                            triggerModelDownload()
                         }
                     }
                     .addOnFailureListener { e ->
@@ -93,6 +117,54 @@ object MlKitManager {
             }
         } catch (e: Exception) {
             Log.w(TAG, "MlKitManager initialization error", e)
+            forceOfflineReady()
+        }
+    }
+
+    fun ensureSmartModelsLoaded(context: Context) {
+        if (_smartModelStatus.value == SmartModelStatus.READY ||
+            _smartModelStatus.value == SmartModelStatus.OFFLINE_FALLBACK
+        ) {
+            return
+        }
+
+        if (!isInitialized) {
+            initialize(context.applicationContext)
+        }
+
+        if (isShapesModelDownloaded || isTextModelDownloaded) {
+            _smartModelStatus.value = SmartModelStatus.READY
+            _smartStatusMessage.value = "Smart AI recognition ready"
+            return
+        }
+
+        _smartModelStatus.value = SmartModelStatus.LOADING
+        _smartStatusMessage.value = "Downloading smart recognition models..."
+        triggerModelDownload()
+
+        // Safety timeout: never leave the user stuck on LOADING if offline or Play Services is unavailable
+        scope.launch {
+            delay(3000L)
+            if (_smartModelStatus.value == SmartModelStatus.LOADING) {
+                if (isShapesModelDownloaded || isTextModelDownloaded) {
+                    _smartModelStatus.value = SmartModelStatus.READY
+                    _smartStatusMessage.value = "Smart AI recognition ready"
+                } else {
+                    forceOfflineReady()
+                }
+            }
+        }
+    }
+
+    fun forceOfflineReady() {
+        _smartModelStatus.value = SmartModelStatus.OFFLINE_FALLBACK
+        _smartStatusMessage.value = "Offline smart shape & symbol recognition ready"
+    }
+
+    private fun updateReadyStatusIfApplicable() {
+        if (isShapesModelDownloaded || isTextModelDownloaded) {
+            _smartModelStatus.value = SmartModelStatus.READY
+            _smartStatusMessage.value = "Smart AI recognition ready"
         }
     }
 
@@ -112,10 +184,14 @@ object MlKitManager {
                     .addOnSuccessListener {
                         isShapesModelDownloaded = true
                         isDownloading = false
+                        updateReadyStatusIfApplicable()
                         Log.d(TAG, "Shapes model downloaded successfully")
                     }
                     .addOnFailureListener { e ->
                         isDownloading = false
+                        if (_smartModelStatus.value == SmartModelStatus.LOADING && !isTextModelDownloaded) {
+                            forceOfflineReady()
+                        }
                         Log.w(TAG, "Shapes model download failed; will use fast geometric classifier", e)
                     }
             }
@@ -127,10 +203,14 @@ object MlKitManager {
                     .addOnSuccessListener {
                         isTextModelDownloaded = true
                         isDownloading = false
+                        updateReadyStatusIfApplicable()
                         Log.d(TAG, "Text ink model downloaded successfully")
                     }
                     .addOnFailureListener { e ->
                         isDownloading = false
+                        if (_smartModelStatus.value == SmartModelStatus.LOADING && !isShapesModelDownloaded) {
+                            forceOfflineReady()
+                        }
                         Log.w(TAG, "Text ink model download failed; will use fast geometric classifier", e)
                     }
             }

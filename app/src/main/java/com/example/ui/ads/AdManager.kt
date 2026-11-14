@@ -60,11 +60,12 @@ object AdManager {
     @Volatile
     private var isInitializing = false
 
-    private val _isInitializedFlow = MutableStateFlow(false)
-    val isInitializedFlow: StateFlow<Boolean> = _isInitializedFlow.asStateFlow()
+    private val _isSdkInitialized = MutableStateFlow(false)
+    val isSdkInitialized: StateFlow<Boolean> = _isSdkInitialized.asStateFlow()
+    val isInitializedFlow: StateFlow<Boolean> = isSdkInitialized
 
     fun initialize(context: Context) {
-        if (_isInitializedFlow.value || isInitializing) return
+        if (_isSdkInitialized.value || isInitializing) return
         isInitializing = true
         val appContext = context.applicationContext
 
@@ -72,10 +73,10 @@ object AdManager {
             try {
                 MobileAds.initialize(appContext) { status ->
                     Log.d(TAG, "MobileAds initialized: $status")
-                    _isInitializedFlow.value = true
+                    _isSdkInitialized.value = true
                     scope.launch(Dispatchers.Main) {
                         preloadInterstitial(appContext)
-                        RewardedAdManager.initialize(appContext)
+                        RewardedAdManager.markSdkInitialized(appContext)
                     }
                 }
             } catch (e: Exception) {
@@ -134,7 +135,7 @@ object AdManager {
             currentAd.show(activity)
         } else {
             Log.d(TAG, "Interstitial ad not ready, invoking continuation callback")
-            if (activity != null && _isInitializedFlow.value) preloadInterstitial(activity)
+            if (activity != null && _isSdkInitialized.value) preloadInterstitial(activity)
             onAdClosed?.invoke()
         }
     }
@@ -154,12 +155,11 @@ fun BannerAdView(
     modifier: Modifier = Modifier,
     adUnitId: String = AdManager.TEST_BANNER_AD_UNIT_ID
 ) {
-    val isAdsInitialized by AdManager.isInitializedFlow.collectAsState()
+    val isAdsInitialized by AdManager.isSdkInitialized.collectAsState()
     var canAttachAdView by remember { mutableStateOf(false) }
 
     LaunchedEffect(isAdsInitialized) {
         if (isAdsInitialized) {
-            // Yield so UI draws cleanly before WebView-backed AdView attaches
             withContext(Dispatchers.Main) {
                 canAttachAdView = true
             }

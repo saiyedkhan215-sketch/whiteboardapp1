@@ -447,7 +447,7 @@ fun HomeScreen(
 
                     Spacer(Modifier.height(16.dp))
 
-                    Text("WhiteBoard v1.2", color = Color.White, fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
+                    Text("WhiteBoard v1.3", color = Color.White, fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
                     Text("Features include freehand drawing, smart shape snapping, formulas, tables, layers, Bohr atomic models, and PDF export.", color = Color.Gray, fontSize = 13.sp)
 
                     Spacer(Modifier.height(16.dp))
