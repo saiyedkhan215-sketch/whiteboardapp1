@@ -57,6 +57,8 @@ import com.example.ui.ads.AdManager
 import com.example.ui.ads.BannerAdView
 import com.example.ui.ads.RewardedAdManager
 import com.example.ui.whiteboard.dialogs.*
+import com.example.ui.whiteboard.ml.MlKitManager
+import com.example.ui.whiteboard.ml.SmartModelStatus
 
 enum class CameraTarget { REGULAR, OCR }
 
@@ -68,6 +70,24 @@ fun WhiteboardScreen(
     val uiState by viewModel.uiState.collectAsState()
     val currentShapeDraft by viewModel.currentShapeDraft.collectAsState()
     val context = LocalContext.current
+
+    val smartModelStatus by MlKitManager.smartModelStatus.collectAsState()
+    val smartStatusMessage by MlKitManager.smartStatusMessage.collectAsState()
+    var showSmartReadyBanner by remember { mutableStateOf(false) }
+
+    LaunchedEffect(uiState.activeTool, smartModelStatus) {
+        if (uiState.activeTool == ToolType.SMART) {
+            if (smartModelStatus == SmartModelStatus.IDLE) {
+                MlKitManager.ensureSmartModelsLoaded(context)
+            } else if (smartModelStatus == SmartModelStatus.READY || smartModelStatus == SmartModelStatus.OFFLINE_FALLBACK) {
+                showSmartReadyBanner = true
+                kotlinx.coroutines.delay(2800L)
+                showSmartReadyBanner = false
+            }
+        } else {
+            showSmartReadyBanner = false
+        }
+    }
 
     val isAdLoaded by RewardedAdManager.isAdLoaded.collectAsState()
     val isAdLoading by RewardedAdManager.isLoading.collectAsState()
@@ -201,6 +221,7 @@ fun WhiteboardScreen(
         val currentSelectedIdState = rememberUpdatedState(uiState.selectedElementId)
         val currentVisibleLayersState = rememberUpdatedState(visibleLayers)
         val currentToolState = rememberUpdatedState(uiState.activeTool)
+        val currentSmartStatusState = rememberUpdatedState(smartModelStatus)
 
         var activeHandle by remember { mutableStateOf(TransformHandle.NONE) }
         var initialTouchPoint by remember { mutableStateOf(Offset.Zero) }
@@ -241,6 +262,9 @@ fun WhiteboardScreen(
                     detectDragGestures(
                         onDragStart = { offset ->
                             if (currentToolState.value == ToolType.HAND_PAN) {
+                                return@detectDragGestures
+                            }
+                            if (currentToolState.value == ToolType.SMART && currentSmartStatusState.value == SmartModelStatus.LOADING) {
                                 return@detectDragGestures
                             }
                             val canvasOffset = screenToCanvas(offset)
@@ -403,7 +427,9 @@ fun WhiteboardScreen(
                         } else {
                             if (currentToolState.value == ToolType.SELECT || currentToolState.value == ToolType.LASSO) {
                                 viewModel.selectElement(null)
-                            } else if (currentToolState.value == ToolType.PEN || currentToolState.value == ToolType.SMART) {
+                            } else if (currentToolState.value == ToolType.PEN ||
+                                (currentToolState.value == ToolType.SMART && currentSmartStatusState.value != SmartModelStatus.LOADING)
+                            ) {
                                 viewModel.onDrawStart(PointF(canvasTap.x, canvasTap.y))
                                 viewModel.onDrawEnd()
                             } else if (currentToolState.value == ToolType.ERASER) {
@@ -912,6 +938,110 @@ fun WhiteboardScreen(
                 contentColor = Color(0xFF2196F3)
             ) {
                 Icon(Icons.Default.ExpandLess, contentDescription = "Expand Toolbar")
+            }
+        }
+
+        // Smart Section Loader Overlay (covers drawing canvas while keeping top bar & toolbar interactive)
+        if (uiState.activeTool == ToolType.SMART && smartModelStatus == SmartModelStatus.LOADING) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .statusBarsPadding()
+                    .navigationBarsPadding()
+                    .padding(top = 64.dp, bottom = if (!uiState.isToolbarCollapsed) 80.dp else 16.dp)
+                    .background(Color.Black.copy(alpha = 0.25f))
+                    .pointerInput(Unit) {
+                        detectTapGestures { /* Block canvas touches while Smart models finish loading */ }
+                    },
+                contentAlignment = Alignment.Center
+            ) {
+                Card(
+                    shape = RoundedCornerShape(20.dp),
+                    colors = CardDefaults.cardColors(containerColor = Color(0xFF1E293B)),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 12.dp),
+                    modifier = Modifier
+                        .padding(horizontal = 32.dp)
+                        .widthIn(max = 340.dp)
+                ) {
+                    Column(
+                        modifier = Modifier.padding(24.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        CircularProgressIndicator(
+                            color = Color(0xFF60A5FA),
+                            strokeWidth = 3.5.dp,
+                            modifier = Modifier.size(44.dp)
+                        )
+                        Spacer(Modifier.height(16.dp))
+                        Text(
+                            text = "Loading Smart Section...",
+                            color = Color.White,
+                            fontSize = 17.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Spacer(Modifier.height(6.dp))
+                        Text(
+                            text = smartStatusMessage,
+                            color = Color(0xFFCBD5E1),
+                            fontSize = 13.sp,
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                        )
+                        Spacer(Modifier.height(6.dp))
+                        Text(
+                            text = "Please wait until loading completes to draw shapes, letters & symbols.",
+                            color = Color(0xFF94A3B8),
+                            fontSize = 11.sp,
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                        )
+                        Spacer(Modifier.height(14.dp))
+                        TextButton(
+                            onClick = { MlKitManager.forceOfflineReady() }
+                        ) {
+                            Text(
+                                text = "Use Offline Shapes Now",
+                                color = Color(0xFF93C5FD),
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        // Brief "Smart Section Ready" Confirmation Pill
+        AnimatedVisibility(
+            visible = uiState.activeTool == ToolType.SMART && showSmartReadyBanner && smartModelStatus != SmartModelStatus.LOADING,
+            enter = fadeIn() + slideInVertically(initialOffsetY = { -it }),
+            exit = fadeOut() + slideOutVertically(targetOffsetY = { -it }),
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .statusBarsPadding()
+                .padding(top = 68.dp)
+        ) {
+            Surface(
+                shape = RoundedCornerShape(20.dp),
+                color = Color(0xFF065F46),
+                shadowElevation = 6.dp
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.CheckCircle,
+                        contentDescription = "Smart Ready",
+                        tint = Color(0xFF6EE7B7),
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(Modifier.width(6.dp))
+                    Text(
+                        text = smartStatusMessage,
+                        color = Color.White,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
             }
         }
     }

@@ -8,21 +8,39 @@ import com.example.data.model.ShapeType
 import com.google.mlkit.common.model.DownloadConditions
 import com.google.mlkit.common.model.RemoteModelManager
 import com.google.mlkit.vision.common.InputImage
-import com.google.mlkit.vision.digitalink.*
+import com.google.mlkit.vision.digitalink.recognition.*
 import com.google.mlkit.vision.text.TextRecognition
 import com.google.mlkit.vision.text.latin.TextRecognizerOptions
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.coroutines.resume
 
+enum class SmartModelStatus {
+    IDLE,
+    LOADING,
+    READY,
+    OFFLINE_FALLBACK
+}
+
 object MlKitManager {
     private const val TAG = "MlKitManager"
 
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
     private var shapesRecognizer: DigitalInkRecognizer? = null
     private var textRecognizer: DigitalInkRecognizer? = null
-    private var ocrRecognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
+    private val ocrRecognizer by lazy {
+        TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
+    }
 
     private var shapesModel: DigitalInkRecognitionModel? = null
     private var textModel: DigitalInkRecognitionModel? = null
@@ -34,94 +52,164 @@ object MlKitManager {
     private var isTextModelDownloaded = false
 
     @Volatile
-    private var isDownloading = false
+    private var isInitialized = false
+
+    private var loadingJob: Job? = null
+
+    private val _smartModelStatus = MutableStateFlow(SmartModelStatus.IDLE)
+    val smartModelStatus: StateFlow<SmartModelStatus> = _smartModelStatus.asStateFlow()
+
+    private val _smartStatusMessage = MutableStateFlow("Preparing Smart Recognition...")
+    val smartStatusMessage: StateFlow<String> = _smartStatusMessage.asStateFlow()
 
     fun initialize(context: Context) {
-        val modelManager = RemoteModelManager.getInstance()
+        if (isInitialized) return
+        isInitialized = true
+        ensureSmartModelsLoaded(context)
+    }
 
-        // 1. Setup Shapes Model (zxx-Zsym-x-shapes)
-        val shapesModelId = DigitalInkRecognitionModelIdentifier.fromLanguageTag("zxx-Zsym-x-shapes")
-        if (shapesModelId != null) {
-            val sm = DigitalInkRecognitionModel.builder(shapesModelId).build()
-            shapesModel = sm
-            val options = DigitalInkRecognizerOptions.builder(sm).build()
-            shapesRecognizer = DigitalInkRecognition.getClient(options)
+    /**
+     * Loads and warms up ML Kit Digital Ink models on a background thread,
+     * updating smartModelStatus so the UI can show a loader until ready.
+     */
+    fun ensureSmartModelsLoaded(context: Context) {
+        if (_smartModelStatus.value == SmartModelStatus.READY) return
+        if (loadingJob?.isActive == true) return
 
-            modelManager.isModelDownloaded(sm)
-                .addOnSuccessListener { downloaded ->
-                    isShapesModelDownloaded = downloaded
-                    if (!downloaded) {
-                        triggerModelDownload()
-                    } else {
-                        Log.d(TAG, "Shapes model already downloaded")
+        _smartModelStatus.value = SmartModelStatus.LOADING
+        _smartStatusMessage.value = "Loading Smart AI models..."
+
+        loadingJob = scope.launch {
+            try {
+                // Ensure recognizers are created on background thread
+                if (shapesRecognizer == null) {
+                    val shapesModelId = DigitalInkRecognitionModelIdentifier.fromLanguageTag("zxx-Zsym-x-shapes")
+                    if (shapesModelId != null) {
+                        val sm = DigitalInkRecognitionModel.builder(shapesModelId).build()
+                        shapesModel = sm
+                        shapesRecognizer = DigitalInkRecognition.getClient(
+                            DigitalInkRecognizerOptions.builder(sm).build()
+                        )
                     }
                 }
-                .addOnFailureListener { e ->
-                    Log.w(TAG, "Failed checking shapes model status", e)
-                }
-        }
-
-        // 2. Setup English Text Model (en) for letters, digits, words, symbols
-        val textModelId = DigitalInkRecognitionModelIdentifier.fromLanguageTag("en")
-        if (textModelId != null) {
-            val tm = DigitalInkRecognitionModel.builder(textModelId).build()
-            textModel = tm
-            val options = DigitalInkRecognizerOptions.builder(tm).build()
-            textRecognizer = DigitalInkRecognition.getClient(options)
-
-            modelManager.isModelDownloaded(tm)
-                .addOnSuccessListener { downloaded ->
-                    isTextModelDownloaded = downloaded
-                    if (!downloaded) {
-                        triggerModelDownload()
-                    } else {
-                        Log.d(TAG, "Text model already downloaded")
+                if (textRecognizer == null) {
+                    val textModelId = DigitalInkRecognitionModelIdentifier.fromLanguageTag("en")
+                    if (textModelId != null) {
+                        val tm = DigitalInkRecognitionModel.builder(textModelId).build()
+                        textModel = tm
+                        textRecognizer = DigitalInkRecognition.getClient(
+                            DigitalInkRecognizerOptions.builder(tm).build()
+                        )
                     }
                 }
-                .addOnFailureListener { e ->
-                    Log.w(TAG, "Failed checking text model status", e)
+
+                val modelManager = RemoteModelManager.getInstance()
+                val conditions = DownloadConditions.Builder().build()
+
+                // 1. Check & download shapes model
+                val sm = shapesModel
+                if (sm != null) {
+                    val shapesReady = ensureSingleModelReady(modelManager, sm, conditions, "Shapes")
+                    isShapesModelDownloaded = shapesReady
+                    if (shapesReady) {
+                        _smartStatusMessage.value = "Warming up Shape engine..."
+                        shapesRecognizer?.let { warmupRecognizer(it) }
+                    }
                 }
+
+                // 2. Check & download English ink model
+                val tm = textModel
+                if (tm != null) {
+                    val textReady = ensureSingleModelReady(modelManager, tm, conditions, "Letters & Symbols")
+                    isTextModelDownloaded = textReady
+                    if (textReady) {
+                        _smartStatusMessage.value = "Warming up Handwriting engine..."
+                        textRecognizer?.let { warmupRecognizer(it) }
+                    }
+                }
+
+                // If user manually skipped to offline mode while downloading, preserve that
+                if (_smartModelStatus.value == SmartModelStatus.OFFLINE_FALLBACK) {
+                    return@launch
+                }
+
+                if (isShapesModelDownloaded || isTextModelDownloaded) {
+                    _smartStatusMessage.value = "Smart Section Ready! Draw shapes, letters & symbols."
+                    _smartModelStatus.value = SmartModelStatus.READY
+                } else {
+                    _smartStatusMessage.value = "Offline Smart Mode Ready"
+                    _smartModelStatus.value = SmartModelStatus.OFFLINE_FALLBACK
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "Smart model loading fallback to offline engine", e)
+                _smartStatusMessage.value = "Offline Smart Mode Ready"
+                _smartModelStatus.value = SmartModelStatus.OFFLINE_FALLBACK
+            }
         }
     }
 
     /**
-     * Trigger background download of models using lenient conditions so it works on any network.
+     * Allows user to immediately draw with offline geometric recognition if network is unavailable/slow.
      */
-    fun triggerModelDownload() {
-        if (isDownloading) return
-        isDownloading = true
+    fun forceOfflineReady() {
+        _smartStatusMessage.value = "Offline Smart Mode Ready"
+        _smartModelStatus.value = SmartModelStatus.OFFLINE_FALLBACK
+    }
 
-        val modelManager = RemoteModelManager.getInstance()
-        val conditions = DownloadConditions.Builder().build()
-
-        shapesModel?.let { sm ->
-            if (!isShapesModelDownloaded) {
-                modelManager.download(sm, conditions)
-                    .addOnSuccessListener {
-                        isShapesModelDownloaded = true
-                        isDownloading = false
-                        Log.d(TAG, "Shapes model downloaded successfully")
+    private suspend fun ensureSingleModelReady(
+        modelManager: RemoteModelManager,
+        model: DigitalInkRecognitionModel,
+        conditions: DownloadConditions,
+        label: String
+    ): Boolean {
+        val alreadyDownloaded = withTimeoutOrNull(3000L) {
+            suspendCancellableCoroutine<Boolean> { cont ->
+                modelManager.isModelDownloaded(model)
+                    .addOnSuccessListener { downloaded ->
+                        if (cont.isActive) cont.resume(downloaded)
                     }
-                    .addOnFailureListener { e ->
-                        isDownloading = false
-                        Log.w(TAG, "Shapes model download failed; will use fast geometric classifier", e)
+                    .addOnFailureListener {
+                        if (cont.isActive) cont.resume(false)
                     }
             }
+        } ?: false
+
+        if (alreadyDownloaded) {
+            Log.d(TAG, "$label model already cached locally")
+            return true
         }
 
-        textModel?.let { tm ->
-            if (!isTextModelDownloaded) {
-                modelManager.download(tm, conditions)
+        _smartStatusMessage.value = "Downloading $label recognition model..."
+        return withTimeoutOrNull(18000L) {
+            suspendCancellableCoroutine<Boolean> { cont ->
+                modelManager.download(model, conditions)
                     .addOnSuccessListener {
-                        isTextModelDownloaded = true
-                        isDownloading = false
-                        Log.d(TAG, "Text ink model downloaded successfully")
+                        Log.d(TAG, "$label model downloaded successfully")
+                        if (cont.isActive) cont.resume(true)
                     }
                     .addOnFailureListener { e ->
-                        isDownloading = false
-                        Log.w(TAG, "Text ink model download failed; will use fast geometric classifier", e)
+                        Log.w(TAG, "$label model download failed: ${e.message}")
+                        if (cont.isActive) cont.resume(false)
                     }
             }
+        } ?: false
+    }
+
+    private suspend fun warmupRecognizer(client: DigitalInkRecognizer) {
+        try {
+            val warmupInk = Ink.builder()
+                .addStroke(
+                    Ink.Stroke.builder()
+                        .addPoint(Ink.Point.create(10f, 10f, 100L))
+                        .addPoint(Ink.Point.create(80f, 80f, 150L))
+                        .build()
+                )
+                .build()
+            withTimeoutOrNull(3500L) {
+                recognizeWithClient(client, warmupInk)
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Warmup skipped: ${e.message}")
         }
     }
 
@@ -133,10 +221,7 @@ object MlKitManager {
     suspend fun recognizeInk(points: List<PointF>): Pair<String, Float>? = withContext(Dispatchers.Default) {
         if (points.size < 3) return@withContext null
 
-        // If neither model is downloaded yet, trigger background download and return null immediately.
-        // This ensures ZERO lag or hang for the user!
         if (!isShapesModelDownloaded && !isTextModelDownloaded) {
-            triggerModelDownload()
             return@withContext null
         }
 

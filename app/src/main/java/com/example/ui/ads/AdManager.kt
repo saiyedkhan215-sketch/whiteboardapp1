@@ -13,6 +13,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -29,6 +31,13 @@ import com.google.android.gms.ads.LoadAdError
 import com.google.android.gms.ads.MobileAds
 import com.google.android.gms.ads.interstitial.InterstitialAd
 import com.google.android.gms.ads.interstitial.InterstitialAdLoadCallback
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
 
 object AdManager {
     private const val TAG = "AdManager"
@@ -38,26 +47,43 @@ object AdManager {
     const val TEST_INTERSTITIAL_AD_UNIT_ID = "ca-app-pub-3940256099942544/1033173712"
     const val TEST_REWARDED_AD_UNIT_ID = "ca-app-pub-3940256099942544/5224354917"
 
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
     private var interstitialAd: InterstitialAd? = null
     private var isInterstitialLoading = false
-    private var isInitialized = false
 
+    @Volatile
+    private var isInitStarted = false
+
+    private val _isSdkInitialized = MutableStateFlow(false)
+    val isSdkInitialized: StateFlow<Boolean> = _isSdkInitialized.asStateFlow()
+
+    /**
+     * Initializes Google Mobile Ads strictly off the main UI thread so app startup
+     * paints immediately with zero blank screen delay.
+     */
     fun initialize(context: Context) {
-        if (isInitialized) return
-        try {
-            MobileAds.initialize(context) { status ->
-                Log.d(TAG, "MobileAds initialized: $status")
-                isInitialized = true
-                preloadInterstitial(context)
-                RewardedAdManager.initialize(context)
+        if (isInitStarted) return
+        isInitStarted = true
+        val appContext = context.applicationContext
+        scope.launch {
+            try {
+                MobileAds.initialize(appContext) { status ->
+                    Log.d(TAG, "MobileAds initialized on background thread: $status")
+                    _isSdkInitialized.value = true
+                    scope.launch(Dispatchers.Main) {
+                        preloadInterstitial(appContext)
+                        RewardedAdManager.markSdkInitialized(appContext)
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error initializing MobileAds", e)
             }
-        } catch (e: Exception) {
-            Log.e(TAG, "Error initializing MobileAds", e)
         }
     }
 
     fun preloadInterstitial(context: Context) {
-        if (interstitialAd != null || isInterstitialLoading) return
+        if (!_isSdkInitialized.value || interstitialAd != null || isInterstitialLoading) return
         isInterstitialLoading = true
         val adRequest = AdRequest.Builder().build()
         InterstitialAd.load(
@@ -105,7 +131,7 @@ object AdManager {
             currentAd.show(activity)
         } else {
             Log.d(TAG, "Interstitial ad not ready, invoking continuation callback")
-            if (activity != null) preloadInterstitial(activity)
+            if (activity != null && _isSdkInitialized.value) preloadInterstitial(activity)
             onAdClosed?.invoke()
         }
     }
@@ -125,36 +151,40 @@ fun BannerAdView(
     modifier: Modifier = Modifier,
     adUnitId: String = AdManager.TEST_BANNER_AD_UNIT_ID
 ) {
+    val isSdkReady by AdManager.isSdkInitialized.collectAsState()
+
     Box(
         modifier = modifier
             .fillMaxWidth()
             .height(52.dp)
-            .background(Color(0xFFF1F5F9))
-            .border(1.dp, Color(0xFFE2E8F0), RoundedCornerShape(4.dp)),
+            .background(Color(0xFF282828), RoundedCornerShape(8.dp))
+            .border(1.dp, Color(0xFF3A3A3A), RoundedCornerShape(8.dp)),
         contentAlignment = Alignment.Center
     ) {
-        AndroidView(
-            modifier = Modifier.fillMaxWidth(),
-            factory = { context ->
-                AdView(context).apply {
-                    setAdSize(AdSize.BANNER)
-                    setAdUnitId(adUnitId)
-                    adListener = object : AdListener() {
-                        override fun onAdFailedToLoad(error: LoadAdError) {
-                            Log.w("BannerAdView", "Banner ad failed to load: ${error.message}")
-                        }
-                    }
-                    loadAd(AdRequest.Builder().build())
-                }
-            }
-        )
-        // Fallback visible tag for test ad rendering indicator if ad binary is offline
         Text(
-            text = "AdMob Test Banner ($adUnitId)",
-            fontSize = 10.sp,
+            text = "AdMob Banner",
+            fontSize = 11.sp,
             fontWeight = FontWeight.Medium,
-            color = Color.Gray,
+            color = Color(0xFF888888),
             modifier = Modifier.padding(horizontal = 4.dp)
         )
+        // Defer AdView (Chromium WebView) inflation until MobileAds finishes initializing in background
+        if (isSdkReady) {
+            AndroidView(
+                modifier = Modifier.fillMaxWidth(),
+                factory = { context ->
+                    AdView(context).apply {
+                        setAdSize(AdSize.BANNER)
+                        setAdUnitId(adUnitId)
+                        adListener = object : AdListener() {
+                            override fun onAdFailedToLoad(error: LoadAdError) {
+                                Log.w("BannerAdView", "Banner ad failed to load: ${error.message}")
+                            }
+                        }
+                        loadAd(AdRequest.Builder().build())
+                    }
+                }
+            )
+        }
     }
 }

@@ -48,15 +48,17 @@ object RewardedAdManager {
 
     fun initialize(context: Context) {
         if (isInitialized) return
-        try {
-            MobileAds.initialize(context) { status ->
-                Log.d(TAG, "MobileAds initialized: $status")
-                isInitialized = true
-                loadAd(context)
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "Error initializing MobileAds", e)
+        if (AdManager.isSdkInitialized.value) {
+            markSdkInitialized(context)
+        } else {
+            AdManager.initialize(context)
         }
+    }
+
+    fun markSdkInitialized(context: Context) {
+        if (isInitialized) return
+        isInitialized = true
+        loadAd(context.applicationContext)
     }
 
     fun loadAd(context: Context, onLoaded: (() -> Unit)? = null, onFailed: ((String) -> Unit)? = null) {

@@ -29,7 +29,6 @@ import androidx.compose.ui.window.Dialog
 import com.example.data.local.BoardEntity
 import com.example.data.repository.BoardRepository
 import com.example.ui.ads.BannerAdView
-import com.example.ui.ads.RewardedAdManager
 import com.example.ui.history.HistoryDialog
 import com.example.ui.policy.PrivacyPolicyDialog
 import kotlinx.coroutines.launch
@@ -44,18 +43,11 @@ fun HomeScreen(
     val coroutineScope = rememberCoroutineScope()
     val boards by repository.allBoards.collectAsState(initial = emptyList())
 
-    val isAdLoaded by RewardedAdManager.isAdLoaded.collectAsState()
-    val isAdLoading by RewardedAdManager.isLoading.collectAsState()
-    val totalRewards by RewardedAdManager.totalRewardsEarned.collectAsState()
-    val isVipUnlocked by RewardedAdManager.isVipUnlocked.collectAsState()
-
     var showHistoryDialog by remember { mutableStateOf(false) }
     var showRateDialog by remember { mutableStateOf(false) }
     var showRemoveAdsDialog by remember { mutableStateOf(false) }
     var showSettingsDialog by remember { mutableStateOf(false) }
-    var showRewardedAdDialog by remember { mutableStateOf(false) }
     var showPrivacyPolicyDialog by remember { mutableStateOf(false) }
-    var rewardEarnedMessage by remember { mutableStateOf<String?>(null) }
 
     Box(
         modifier = Modifier
@@ -247,78 +239,32 @@ fun HomeScreen(
 
             Spacer(Modifier.height(14.dp))
 
-            // Row: Remove Ads and Watch Ad
-            Row(
-                modifier = Modifier.width(260.dp),
-                horizontalArrangement = Arrangement.SpaceBetween
+            // "Remove Ads" Pill
+            Box(
+                modifier = Modifier
+                    .width(260.dp)
+                    .height(42.dp)
+                    .clip(RoundedCornerShape(22.dp))
+                    .background(Color(0xFF282828))
+                    .border(1.dp, Color(0xFF3A3A3A), RoundedCornerShape(22.dp))
+                    .clickable { showRemoveAdsDialog = true },
+                contentAlignment = Alignment.Center
             ) {
-                // "Remove Ads" Pill
-                Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .padding(end = 4.dp)
-                        .height(42.dp)
-                        .clip(RoundedCornerShape(22.dp))
-                        .background(Color(0xFF282828))
-                        .border(1.dp, Color(0xFF3A3A3A), RoundedCornerShape(22.dp))
-                        .clickable { showRemoveAdsDialog = true },
-                    contentAlignment = Alignment.Center
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            imageVector = Icons.Outlined.Block,
-                            contentDescription = "Remove Ads",
-                            tint = Color(0xFFAAAAAA),
-                            modifier = Modifier.size(15.dp)
-                        )
-                        Spacer(Modifier.width(5.dp))
-                        Text(
-                            text = "Remove Ads",
-                            color = Color.White,
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Medium
-                        )
-                    }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = Icons.Outlined.Block,
+                        contentDescription = "Remove Ads",
+                        tint = Color(0xFFAAAAAA),
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(Modifier.width(6.dp))
+                    Text(
+                        text = "Remove Ads",
+                        color = Color.White,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Medium
+                    )
                 }
-
-                // "Watch Ad" Pill
-                Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .padding(start = 4.dp)
-                        .height(42.dp)
-                        .clip(RoundedCornerShape(22.dp))
-                        .background(if (isVipUnlocked) Color(0xFF3E2723) else Color(0xFF2D231B))
-                        .border(1.dp, Color(0xFFFF9800).copy(alpha = 0.7f), RoundedCornerShape(22.dp))
-                        .clickable { showRewardedAdDialog = true },
-                    contentAlignment = Alignment.Center
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            imageVector = Icons.Default.CardGiftcard,
-                            contentDescription = "Watch Rewarded Ad",
-                            tint = Color(0xFFFFB74D),
-                            modifier = Modifier.size(15.dp)
-                        )
-                        Spacer(Modifier.width(5.dp))
-                        Text(
-                            text = if (isVipUnlocked) "VIP Active ★" else "Watch Ad 🎁",
-                            color = Color(0xFFFFE0B2),
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                    }
-                }
-            }
-
-            if (totalRewards > 0) {
-                Spacer(Modifier.height(8.dp))
-                Text(
-                    text = "★ Rewarded Points: $totalRewards",
-                    color = Color(0xFFFFB300),
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.Medium
-                )
             }
 
             Spacer(Modifier.height(16.dp))
@@ -469,19 +415,6 @@ fun HomeScreen(
                     ) {
                         Text("Got it")
                     }
-                    Spacer(Modifier.height(8.dp))
-                    OutlinedButton(
-                        onClick = {
-                            showRemoveAdsDialog = false
-                            showRewardedAdDialog = true
-                        },
-                        colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFFFB74D)),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Icon(Icons.Default.CardGiftcard, contentDescription = null, modifier = Modifier.size(18.dp))
-                        Spacer(Modifier.width(8.dp))
-                        Text("Watch Rewarded Ad for VIP Tools")
-                    }
                 }
             }
         }
@@ -514,54 +447,13 @@ fun HomeScreen(
 
                     Spacer(Modifier.height(16.dp))
 
-                    Text("WhiteBoard v1.1", color = Color.White, fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
+                    Text("WhiteBoard v1.2", color = Color.White, fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
                     Text("Features include freehand drawing, smart shape snapping, formulas, tables, layers, Bohr atomic models, and PDF export.", color = Color.Gray, fontSize = 13.sp)
 
                     Spacer(Modifier.height(16.dp))
 
                     Text("Storage", color = Color.White, fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
                     Text("Boards saved: ${boards.size}", color = Color.Gray, fontSize = 13.sp)
-
-                    Spacer(Modifier.height(16.dp))
-
-                    // Rewarded Test Ad Integration Section
-                    Text("Google AdMob Rewarded Test Ad", color = Color.White, fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
-                    Text("Ad Unit: ${RewardedAdManager.TEST_REWARDED_AD_UNIT_ID}", color = Color.LightGray, fontSize = 11.sp)
-                    Spacer(Modifier.height(6.dp))
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Box(
-                            modifier = Modifier
-                                .size(8.dp)
-                                .clip(CircleShape)
-                                .background(if (isAdLoaded) Color(0xFF4CAF50) else Color(0xFFFF9800))
-                        )
-                        Spacer(Modifier.width(6.dp))
-                        Text(
-                            text = if (isAdLoaded) "Ad Ready to play ✅" else if (isAdLoading) "Loading test ad..." else "Ready to request ad",
-                            color = if (isAdLoaded) Color(0xFF81C784) else Color(0xFFFFB74D),
-                            fontSize = 12.sp
-                        )
-                    }
-                    Spacer(Modifier.height(10.dp))
-                    Button(
-                        onClick = {
-                            val activity = RewardedAdManager.findActivity(context)
-                            if (activity != null) {
-                                RewardedAdManager.showAd(
-                                    activity = activity,
-                                    onUserEarnedReward = { rewardItem ->
-                                        rewardEarnedMessage = "🎉 Test Ad Completed! Earned ${rewardItem.amount} ${rewardItem.type} points!"
-                                    }
-                                )
-                            }
-                        },
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE65100)),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Icon(Icons.Default.PlayArrow, contentDescription = null, modifier = Modifier.size(18.dp))
-                        Spacer(Modifier.width(6.dp))
-                        Text("Test Play Rewarded Ad", fontWeight = FontWeight.Bold)
-                    }
 
                     Spacer(Modifier.height(16.dp))
 
@@ -587,144 +479,6 @@ fun HomeScreen(
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Text("Close")
-                    }
-                }
-            }
-        }
-    }
-
-    // Rewarded Ad Prompt Dialog
-    if (showRewardedAdDialog) {
-        Dialog(onDismissRequest = { showRewardedAdDialog = false }) {
-            Card(
-                shape = RoundedCornerShape(20.dp),
-                colors = CardDefaults.cardColors(containerColor = Color(0xFF262626)),
-                modifier = Modifier.padding(16.dp)
-            ) {
-                Column(
-                    modifier = Modifier.padding(24.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(60.dp)
-                            .clip(CircleShape)
-                            .background(Color(0xFF3E2723)),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.CardGiftcard,
-                            contentDescription = null,
-                            tint = Color(0xFFFFB74D),
-                            modifier = Modifier.size(34.dp)
-                        )
-                    }
-                    Spacer(Modifier.height(14.dp))
-                    Text(
-                        text = "Watch Rewarded Ad",
-                        color = Color.White,
-                        fontSize = 20.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Spacer(Modifier.height(8.dp))
-                    Text(
-                        text = "Watch a test video ad to earn rewards and unlock VIP WhiteBoard tools:\n\n• Golden & Neon Drawing Pens\n• Blueprint & Grid Canvas Textures\n• Science Diagrams & Bonus Stickers\n• High-Definition PDF Export",
-                        color = Color(0xFFCCCCCC),
-                        fontSize = 13.sp,
-                        lineHeight = 18.sp
-                    )
-
-                    Spacer(Modifier.height(14.dp))
-                    Surface(
-                        color = Color(0xFF1E1E1E),
-                        shape = RoundedCornerShape(8.dp),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Column(modifier = Modifier.padding(10.dp)) {
-                            Text("Test Ad Unit: ca-app-pub-3940256099942544/5224354917", color = Color.Gray, fontSize = 10.sp)
-                            Spacer(Modifier.height(2.dp))
-                            Text(
-                                text = if (isAdLoaded) "Status: Ready to Display ✅" else "Status: Ready (will load ad)",
-                                color = if (isAdLoaded) Color(0xFF81C784) else Color(0xFFFFB74D),
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Medium
-                            )
-                        }
-                    }
-
-                    Spacer(Modifier.height(20.dp))
-
-                    Button(
-                        onClick = {
-                            val activity = RewardedAdManager.findActivity(context)
-                            if (activity != null) {
-                                RewardedAdManager.showAd(
-                                    activity = activity,
-                                    onUserEarnedReward = { rewardItem ->
-                                        showRewardedAdDialog = false
-                                        rewardEarnedMessage = "🎉 Awesome! You earned ${rewardItem.amount} ${rewardItem.type}! VIP features are now active!"
-                                    }
-                                )
-                            } else {
-                                Toast.makeText(context, "Activity context not found", Toast.LENGTH_SHORT).show()
-                            }
-                        },
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE65100)),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Icon(Icons.Default.PlayArrow, contentDescription = null, modifier = Modifier.size(20.dp))
-                        Spacer(Modifier.width(8.dp))
-                        Text("Watch Video Ad", fontWeight = FontWeight.Bold, fontSize = 15.sp)
-                    }
-
-                    Spacer(Modifier.height(8.dp))
-
-                    TextButton(
-                        onClick = { showRewardedAdDialog = false },
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Text("Maybe Later", color = Color.Gray)
-                    }
-                }
-            }
-        }
-    }
-
-    // Celebration Reward Earned Dialog
-    if (rewardEarnedMessage != null) {
-        Dialog(onDismissRequest = { rewardEarnedMessage = null }) {
-            Card(
-                shape = RoundedCornerShape(20.dp),
-                colors = CardDefaults.cardColors(containerColor = Color(0xFF242B1E)),
-                border = androidx.compose.foundation.BorderStroke(1.5.dp, Color(0xFF81C784)),
-                modifier = Modifier.padding(16.dp)
-            ) {
-                Column(
-                    modifier = Modifier.padding(24.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    Text(text = "🎉", fontSize = 42.sp)
-                    Spacer(Modifier.height(8.dp))
-                    Text(
-                        text = "Reward Earned!",
-                        color = Color.White,
-                        fontSize = 22.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Spacer(Modifier.height(10.dp))
-                    Text(
-                        text = rewardEarnedMessage ?: "",
-                        color = Color(0xFFE8F5E9),
-                        fontSize = 14.sp,
-                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
-                    )
-                    Spacer(Modifier.height(20.dp))
-                    Button(
-                        onClick = { rewardEarnedMessage = null },
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF43A047)),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Text("Awesome!", fontWeight = FontWeight.Bold)
                     }
                 }
             }

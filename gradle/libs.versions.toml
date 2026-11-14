@@ -41,7 +41,7 @@ googleServices = "4.5.0"
 credentials = "1.5.0"
 googleid = "1.1.1"
 playServicesAds = "23.6.0"
-mlkitDigitalInk = "18.1.0"
+mlkitDigitalInk = "19.0.0"
 mlkitTextRecognition = "16.0.1"
 
 

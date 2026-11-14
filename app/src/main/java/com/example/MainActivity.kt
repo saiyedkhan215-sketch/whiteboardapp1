@@ -4,18 +4,21 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.material3.Surface
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.data.local.WhiteboardDatabase
 import com.example.data.repository.BoardRepository
-import com.example.ui.ads.RewardedAdManager
+import com.example.ui.ads.AdManager
 import com.example.ui.home.HomeScreen
 import com.example.ui.theme.MyApplicationTheme
 import com.example.ui.whiteboard.WhiteboardScreen
 import com.example.ui.whiteboard.WhiteboardViewModel
+import com.example.ui.whiteboard.ml.MlKitManager
 
 sealed class AppScreen {
     data object Home : AppScreen()
@@ -28,36 +31,36 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 
-        val database = WhiteboardDatabase.getDatabase(this)
+        val database = WhiteboardDatabase.getDatabase(applicationContext)
         val repository = BoardRepository(database.boardDao())
 
-        // Initialize Google Mobile Ads (Banner, Interstitial, Rewarded)
-        com.example.ui.ads.AdManager.initialize(this)
-
-        // Initialize Google ML Kit Digital Ink Recognition & OCR
-        com.example.ui.whiteboard.ml.MlKitManager.initialize(this)
-
         setContent {
+            // Defer heavy SDK & ML model initialization until right after first UI frame is composed
+            LaunchedEffect(Unit) {
+                AdManager.initialize(applicationContext)
+                MlKitManager.initialize(applicationContext)
+            }
+
             MyApplicationTheme {
-                Surface(modifier = Modifier.fillMaxSize()) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(Color(0xFF1E1E1E))
+                ) {
                     var currentScreen by remember { mutableStateOf<AppScreen>(AppScreen.Home) }
                     val whiteboardViewModel: WhiteboardViewModel = viewModel()
 
-                    when (val screen = currentScreen) {
+                    when (currentScreen) {
                         is AppScreen.Home -> {
                             HomeScreen(
                                 repository = repository,
                                 onNewBoard = {
                                     whiteboardViewModel.loadBoard(0L)
-                                    com.example.ui.ads.AdManager.showInterstitial(this) {
-                                        currentScreen = AppScreen.Whiteboard(0L)
-                                    }
+                                    currentScreen = AppScreen.Whiteboard(0L)
                                 },
                                 onOpenBoard = { boardId ->
                                     whiteboardViewModel.loadBoard(boardId)
-                                    com.example.ui.ads.AdManager.showInterstitial(this) {
-                                        currentScreen = AppScreen.Whiteboard(boardId)
-                                    }
+                                    currentScreen = AppScreen.Whiteboard(boardId)
                                 }
                             )
                         }
@@ -65,7 +68,7 @@ class MainActivity : ComponentActivity() {
                             WhiteboardScreen(
                                 viewModel = whiteboardViewModel,
                                 onNavigateBack = {
-                                    com.example.ui.ads.AdManager.showInterstitial(this) {
+                                    AdManager.showInterstitial(this@MainActivity) {
                                         currentScreen = AppScreen.Home
                                     }
                                 }
