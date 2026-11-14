@@ -1076,11 +1076,14 @@ class WhiteboardViewModel(application: Application) : AndroidViewModel(applicati
         viewModelScope.launch {
             try {
                 val bitmap = renderCurrentPageToBitmap(1080, 1920)
-                val cacheDir = File(context.cacheDir, "shared")
-                cacheDir.mkdirs()
-                val imageFile = File(cacheDir, "whiteboard_${System.currentTimeMillis()}.png")
-                FileOutputStream(imageFile).use { out ->
-                    bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
+                val imageFile = withContext(Dispatchers.IO) {
+                    val cacheDir = File(context.cacheDir, "shared")
+                    cacheDir.mkdirs()
+                    File(cacheDir, "whiteboard_${System.currentTimeMillis()}.png").also { file ->
+                        FileOutputStream(file).use { out ->
+                            bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
+                        }
+                    }
                 }
 
                 val uri = FileProvider.getUriForFile(
@@ -1092,12 +1095,20 @@ class WhiteboardViewModel(application: Application) : AndroidViewModel(applicati
                 val intent = Intent(Intent.ACTION_SEND).apply {
                     type = "image/png"
                     putExtra(Intent.EXTRA_STREAM, uri)
+                    clipData = android.content.ClipData.newRawUri("Whiteboard Image", uri)
                     addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                 }
-                context.startActivity(Intent.createChooser(intent, "Share Whiteboard"))
+                val activity = com.example.ui.ads.AdManager.findActivity(context)
+                val chooser = Intent.createChooser(intent, "Share Whiteboard").apply {
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                    if (activity == null) {
+                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    }
+                }
+                (activity ?: context).startActivity(chooser)
             } catch (e: Exception) {
                 e.printStackTrace()
-                Toast.makeText(context, "Export error: ${e.message}", Toast.LENGTH_SHORT).show()
+                Toast.makeText(context, "Unable to share image: ${e.message}", Toast.LENGTH_SHORT).show()
             }
         }
     }
@@ -1182,13 +1193,16 @@ class WhiteboardViewModel(application: Application) : AndroidViewModel(applicati
                     pdfDocument.finishPage(pdfPage)
                 }
 
-                val cacheDir = File(context.cacheDir, "exports")
-                cacheDir.mkdirs()
-                val pdfFile = File(cacheDir, "whiteboard_${System.currentTimeMillis()}.pdf")
-                FileOutputStream(pdfFile).use { out ->
-                    pdfDocument.writeTo(out)
+                val pdfFile = withContext(Dispatchers.IO) {
+                    val cacheDir = File(context.cacheDir, "exports")
+                    cacheDir.mkdirs()
+                    File(cacheDir, "whiteboard_${System.currentTimeMillis()}.pdf").also { file ->
+                        FileOutputStream(file).use { out ->
+                            pdfDocument.writeTo(out)
+                        }
+                        pdfDocument.close()
+                    }
                 }
-                pdfDocument.close()
 
                 val uri = FileProvider.getUriForFile(
                     context,
@@ -1199,12 +1213,20 @@ class WhiteboardViewModel(application: Application) : AndroidViewModel(applicati
                 val intent = Intent(Intent.ACTION_SEND).apply {
                     type = "application/pdf"
                     putExtra(Intent.EXTRA_STREAM, uri)
+                    clipData = android.content.ClipData.newRawUri("Whiteboard PDF", uri)
                     addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                 }
-                context.startActivity(Intent.createChooser(intent, "Share Whiteboard PDF"))
+                val activity = com.example.ui.ads.AdManager.findActivity(context)
+                val chooser = Intent.createChooser(intent, "Share Whiteboard PDF").apply {
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                    if (activity == null) {
+                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    }
+                }
+                (activity ?: context).startActivity(chooser)
             } catch (e: Exception) {
                 e.printStackTrace()
-                Toast.makeText(context, "PDF export error: ${e.message}", Toast.LENGTH_SHORT).show()
+                Toast.makeText(context, "Unable to share PDF: ${e.message}", Toast.LENGTH_SHORT).show()
             }
         }
     }

@@ -1,7 +1,13 @@
 package com.example.ui.home
 
+import android.app.Activity
+import android.content.ActivityNotFoundException
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.Context
+import android.content.ContextWrapper
 import android.content.Intent
+import android.net.Uri
 import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -14,7 +20,6 @@ import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.Block
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.outlined.Share
-import androidx.compose.material.icons.outlined.Star
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -44,7 +49,6 @@ fun HomeScreen(
     val boards by repository.allBoards.collectAsState(initial = emptyList())
 
     var showHistoryDialog by remember { mutableStateOf(false) }
-    var showRateDialog by remember { mutableStateOf(false) }
     var showRemoveAdsDialog by remember { mutableStateOf(false) }
     var showSettingsDialog by remember { mutableStateOf(false) }
     var showPrivacyPolicyDialog by remember { mutableStateOf(false) }
@@ -177,7 +181,7 @@ fun HomeScreen(
                         .clip(RoundedCornerShape(22.dp))
                         .background(Color(0xFF282828))
                         .border(1.dp, Color(0xFF3A3A3A), RoundedCornerShape(22.dp))
-                        .clickable { showRateDialog = true },
+                        .clickable { openPlayStoreForRating(context) },
                     contentAlignment = Alignment.Center
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -206,17 +210,7 @@ fun HomeScreen(
                         .clip(RoundedCornerShape(22.dp))
                         .background(Color(0xFF282828))
                         .border(1.dp, Color(0xFF3A3A3A), RoundedCornerShape(22.dp))
-                        .clickable {
-                            val shareIntent = Intent(Intent.ACTION_SEND).apply {
-                                type = "text/plain"
-                                putExtra(Intent.EXTRA_SUBJECT, "WhiteBoard App")
-                                putExtra(
-                                    Intent.EXTRA_TEXT,
-                                    "Check out WhiteBoard - the ultimate digital canvas with smart drawing, shapes, math formulas, and science diagrams!"
-                                )
-                            }
-                            context.startActivity(Intent.createChooser(shareIntent, "Share WhiteBoard"))
-                        },
+                        .clickable { shareApp(context) },
                     contentAlignment = Alignment.Center
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -314,65 +308,6 @@ fun HomeScreen(
             },
             onDismiss = { showHistoryDialog = false }
         )
-    }
-
-    // Rate App Dialog
-    if (showRateDialog) {
-        var userRating by remember { mutableStateOf(5) }
-        Dialog(onDismissRequest = { showRateDialog = false }) {
-            Card(
-                shape = RoundedCornerShape(20.dp),
-                colors = CardDefaults.cardColors(containerColor = Color(0xFF2A2A2A)),
-                modifier = Modifier.padding(16.dp)
-            ) {
-                Column(
-                    modifier = Modifier.padding(24.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    Text(
-                        text = "Rate WhiteBoard",
-                        color = Color.White,
-                        fontSize = 20.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Spacer(Modifier.height(8.dp))
-                    Text(
-                        text = "How would you rate your experience with WhiteBoard?",
-                        color = Color.Gray,
-                        fontSize = 14.sp,
-                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
-                    )
-
-                    Spacer(Modifier.height(18.dp))
-
-                    Row(horizontalArrangement = Arrangement.Center) {
-                        for (i in 1..5) {
-                            IconButton(onClick = { userRating = i }) {
-                                Icon(
-                                    imageVector = if (i <= userRating) Icons.Filled.Star else Icons.Outlined.Star,
-                                    contentDescription = "Star $i",
-                                    tint = if (i <= userRating) Color(0xFFFFB300) else Color.Gray,
-                                    modifier = Modifier.size(32.dp)
-                                )
-                            }
-                        }
-                    }
-
-                    Spacer(Modifier.height(20.dp))
-
-                    Button(
-                        onClick = {
-                            Toast.makeText(context, "Thank you for giving $userRating stars!", Toast.LENGTH_SHORT).show()
-                            showRateDialog = false
-                        },
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2F80ED)),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Text("Submit Rating", fontWeight = FontWeight.Bold)
-                    }
-                }
-            }
-        }
     }
 
     // Remove Ads Dialog
@@ -490,5 +425,82 @@ fun HomeScreen(
         PrivacyPolicyDialog(
             onDismiss = { showPrivacyPolicyDialog = false }
         )
+    }
+}
+
+private tailrec fun Context.findActivity(): Activity? = when (this) {
+    is Activity -> this
+    is ContextWrapper -> baseContext.findActivity()
+    else -> null
+}
+
+private fun openPlayStoreForRating(context: Context) {
+    val packageName = context.packageName
+    val activity = context.findActivity()
+    val launchContext = activity ?: context
+
+    val marketIntent = Intent(
+        Intent.ACTION_VIEW,
+        Uri.parse("market://details?id=$packageName")
+    ).apply {
+        addFlags(
+            Intent.FLAG_ACTIVITY_NO_HISTORY or
+                Intent.FLAG_ACTIVITY_NEW_DOCUMENT or
+                Intent.FLAG_ACTIVITY_MULTIPLE_TASK
+        )
+        if (activity == null) {
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+    }
+
+    try {
+        launchContext.startActivity(marketIntent)
+    } catch (_: ActivityNotFoundException) {
+        val webIntent = Intent(
+            Intent.ACTION_VIEW,
+            Uri.parse("https://play.google.com/store/apps/details?id=$packageName")
+        ).apply {
+            if (activity == null) {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+        }
+        try {
+            launchContext.startActivity(webIntent)
+        } catch (_: Exception) {
+            Toast.makeText(context, "Unable to open Google Play Store", Toast.LENGTH_SHORT).show()
+        }
+    } catch (_: Exception) {
+        Toast.makeText(context, "Unable to open Google Play Store", Toast.LENGTH_SHORT).show()
+    }
+}
+
+private fun shareApp(context: Context) {
+    val playStoreUrl = "https://play.google.com/store/apps/details?id=${context.packageName}"
+    val shareText = "Check out WhiteBoard - the ultimate digital canvas with smart drawing, shapes, math formulas, and science diagrams!\n$playStoreUrl"
+    val activity = context.findActivity()
+    val launchContext = activity ?: context
+
+    val shareIntent = Intent(Intent.ACTION_SEND).apply {
+        type = "text/plain"
+        putExtra(Intent.EXTRA_SUBJECT, "WhiteBoard App")
+        putExtra(Intent.EXTRA_TEXT, shareText)
+    }
+
+    val chooser = Intent.createChooser(shareIntent, "Share WhiteBoard").apply {
+        if (activity == null) {
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+    }
+
+    try {
+        launchContext.startActivity(chooser)
+    } catch (_: Exception) {
+        try {
+            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+            clipboard?.setPrimaryClip(ClipData.newPlainText("WhiteBoard Link", shareText))
+            Toast.makeText(context, "Share link copied to clipboard", Toast.LENGTH_SHORT).show()
+        } catch (_: Exception) {
+            Toast.makeText(context, "No sharing app found on this device", Toast.LENGTH_SHORT).show()
+        }
     }
 }
