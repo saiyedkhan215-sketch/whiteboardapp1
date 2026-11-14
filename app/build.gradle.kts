@@ -63,15 +63,15 @@ android {
     compose = true
     buildConfig = true
   }
-  packaging {
-    jniLibs {
-      useLegacyPackaging = false
-    }
-  }
   testOptions { unitTests { isIncludeAndroidResources = true } }
   dependenciesInfo {
     includeInApk = false
     includeInBundle = true
+  }
+  packaging {
+    jniLibs {
+      useLegacyPackaging = false
+    }
   }
 }
 

@@ -4,9 +4,8 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material3.Surface
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -19,6 +18,8 @@ import com.example.ui.theme.MyApplicationTheme
 import com.example.ui.whiteboard.WhiteboardScreen
 import com.example.ui.whiteboard.WhiteboardViewModel
 import com.example.ui.whiteboard.ml.MlKitManager
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 sealed class AppScreen {
     data object Home : AppScreen()
@@ -31,21 +32,23 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 
-        val database = WhiteboardDatabase.getDatabase(applicationContext)
+        val appContext = applicationContext
+        val database = WhiteboardDatabase.getDatabase(appContext)
         val repository = BoardRepository(database.boardDao())
 
         setContent {
-            // Defer heavy SDK & ML model initialization until right after first UI frame is composed
+            // Defer heavy SDK initializations (AdMob & ML Kit) until after first frame renders
             LaunchedEffect(Unit) {
-                AdManager.initialize(applicationContext)
-                MlKitManager.initialize(applicationContext)
+                withContext(Dispatchers.IO) {
+                    AdManager.initialize(appContext)
+                    MlKitManager.initialize(appContext)
+                }
             }
 
             MyApplicationTheme {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(Color(0xFF1E1E1E))
+                Surface(
+                    modifier = Modifier.fillMaxSize(),
+                    color = Color(0xFF1E1E1E)
                 ) {
                     var currentScreen by remember { mutableStateOf<AppScreen>(AppScreen.Home) }
                     val whiteboardViewModel: WhiteboardViewModel = viewModel()
@@ -56,11 +59,15 @@ class MainActivity : ComponentActivity() {
                                 repository = repository,
                                 onNewBoard = {
                                     whiteboardViewModel.loadBoard(0L)
-                                    currentScreen = AppScreen.Whiteboard(0L)
+                                    AdManager.showInterstitial(this@MainActivity) {
+                                        currentScreen = AppScreen.Whiteboard(0L)
+                                    }
                                 },
                                 onOpenBoard = { boardId ->
                                     whiteboardViewModel.loadBoard(boardId)
-                                    currentScreen = AppScreen.Whiteboard(boardId)
+                                    AdManager.showInterstitial(this@MainActivity) {
+                                        currentScreen = AppScreen.Whiteboard(boardId)
+                                    }
                                 }
                             )
                         }

@@ -13,8 +13,12 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -38,11 +42,12 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 object AdManager {
     private const val TAG = "AdManager"
 
-    // Test Ad Unit IDs provided by user
+    // Test Ad Unit IDs
     const val TEST_BANNER_AD_UNIT_ID = "ca-app-pub-3940256099942544/6300978111"
     const val TEST_INTERSTITIAL_AD_UNIT_ID = "ca-app-pub-3940256099942544/1033173712"
     const val TEST_REWARDED_AD_UNIT_ID = "ca-app-pub-3940256099942544/5224354917"
@@ -53,37 +58,35 @@ object AdManager {
     private var isInterstitialLoading = false
 
     @Volatile
-    private var isInitStarted = false
+    private var isInitializing = false
 
-    private val _isSdkInitialized = MutableStateFlow(false)
-    val isSdkInitialized: StateFlow<Boolean> = _isSdkInitialized.asStateFlow()
+    private val _isInitializedFlow = MutableStateFlow(false)
+    val isInitializedFlow: StateFlow<Boolean> = _isInitializedFlow.asStateFlow()
 
-    /**
-     * Initializes Google Mobile Ads strictly off the main UI thread so app startup
-     * paints immediately with zero blank screen delay.
-     */
     fun initialize(context: Context) {
-        if (isInitStarted) return
-        isInitStarted = true
+        if (_isInitializedFlow.value || isInitializing) return
+        isInitializing = true
         val appContext = context.applicationContext
+
         scope.launch {
             try {
                 MobileAds.initialize(appContext) { status ->
-                    Log.d(TAG, "MobileAds initialized on background thread: $status")
-                    _isSdkInitialized.value = true
+                    Log.d(TAG, "MobileAds initialized: $status")
+                    _isInitializedFlow.value = true
                     scope.launch(Dispatchers.Main) {
                         preloadInterstitial(appContext)
-                        RewardedAdManager.markSdkInitialized(appContext)
+                        RewardedAdManager.initialize(appContext)
                     }
                 }
             } catch (e: Exception) {
+                isInitializing = false
                 Log.e(TAG, "Error initializing MobileAds", e)
             }
         }
     }
 
     fun preloadInterstitial(context: Context) {
-        if (!_isSdkInitialized.value || interstitialAd != null || isInterstitialLoading) return
+        if (interstitialAd != null || isInterstitialLoading) return
         isInterstitialLoading = true
         val adRequest = AdRequest.Builder().build()
         InterstitialAd.load(
@@ -131,7 +134,7 @@ object AdManager {
             currentAd.show(activity)
         } else {
             Log.d(TAG, "Interstitial ad not ready, invoking continuation callback")
-            if (activity != null && _isSdkInitialized.value) preloadInterstitial(activity)
+            if (activity != null && _isInitializedFlow.value) preloadInterstitial(activity)
             onAdClosed?.invoke()
         }
     }
@@ -151,7 +154,17 @@ fun BannerAdView(
     modifier: Modifier = Modifier,
     adUnitId: String = AdManager.TEST_BANNER_AD_UNIT_ID
 ) {
-    val isSdkReady by AdManager.isSdkInitialized.collectAsState()
+    val isAdsInitialized by AdManager.isInitializedFlow.collectAsState()
+    var canAttachAdView by remember { mutableStateOf(false) }
+
+    LaunchedEffect(isAdsInitialized) {
+        if (isAdsInitialized) {
+            // Yield so UI draws cleanly before WebView-backed AdView attaches
+            withContext(Dispatchers.Main) {
+                canAttachAdView = true
+            }
+        }
+    }
 
     Box(
         modifier = modifier
@@ -161,15 +174,7 @@ fun BannerAdView(
             .border(1.dp, Color(0xFF3A3A3A), RoundedCornerShape(8.dp)),
         contentAlignment = Alignment.Center
     ) {
-        Text(
-            text = "AdMob Banner",
-            fontSize = 11.sp,
-            fontWeight = FontWeight.Medium,
-            color = Color(0xFF888888),
-            modifier = Modifier.padding(horizontal = 4.dp)
-        )
-        // Defer AdView (Chromium WebView) inflation until MobileAds finishes initializing in background
-        if (isSdkReady) {
+        if (canAttachAdView) {
             AndroidView(
                 modifier = Modifier.fillMaxWidth(),
                 factory = { context ->
@@ -184,6 +189,14 @@ fun BannerAdView(
                         loadAd(AdRequest.Builder().build())
                     }
                 }
+            )
+        } else {
+            Text(
+                text = "Ad Space",
+                fontSize = 10.sp,
+                fontWeight = FontWeight.Medium,
+                color = Color.Gray,
+                modifier = Modifier.padding(horizontal = 4.dp)
             )
         }
     }

@@ -255,7 +255,7 @@ fun HomeScreen(
                         imageVector = Icons.Outlined.Block,
                         contentDescription = "Remove Ads",
                         tint = Color(0xFFAAAAAA),
-                        modifier = Modifier.size(16.dp)
+                        modifier = Modifier.size(15.dp)
                     )
                     Spacer(Modifier.width(6.dp))
                     Text(
